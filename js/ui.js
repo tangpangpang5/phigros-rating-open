@@ -1352,7 +1352,7 @@ function trlWaitApplied(opt) {
       if (opt.gen !== trlGen) { finish(false, true); return; }
       /* 判据回到 v1.0.15 那版（只判「目标主题表已启用」）。
          ⚠️ 曾经加强成「还要 CSSOM 有规则」，结果换表慢时会把遮罩卡到 8 秒 ——
-            而那段里页面没有主题样式，观感就是"曲绘还没出来 CSS 先掉了"（维护者两轮反馈的同一症状）。
+            而那段里页面没有主题样式，观感就是"曲绘还没出来 CSS 先掉了"（两轮反馈的同一症状）。
             现在松判据 + 2.5s 上限：宁可早点收尾，也不长时间盖着一个没样式的页面。 */
       const sheetOk = !opt.styleKey || (() => {
         const el = document.getElementById('css-' + opt.styleKey);
