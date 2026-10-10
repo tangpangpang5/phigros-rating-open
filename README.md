@@ -70,7 +70,13 @@ node serve.js
 
 它一次装好：建表、行级安全策略（RLS）、注册触发器、`profiles` 视图、`is_admin` 加固（列级授权 + 触发器 + `admin_set_admin()` 函数）、写入限频触发器。
 
-**2）填 `config.js`**：
+**2）复制一份配置模板并填写**：
+
+```bash
+cp config.example.js config.js
+```
+
+然后编辑 `config.js`：
 
 ```js
 window.PHIGROS_BACKEND = {
@@ -79,6 +85,9 @@ window.PHIGROS_BACKEND = {
   anonKey: 'sb_publishable_...'              // 只能用 publishable / anon 公钥
 };
 ```
+
+> 仓库里带的是 `config.example.js` 模板，**真正的 `config.js` 被 `.gitignore` 忽略** ——
+> 这样你自己填了地址的那份不会被误提交。
 
 > anon / publishable 公钥本来就是给浏览器用的，公开不算泄密 —— **真正的防线是数据库里的 RLS 策略**。
 > **绝对不要**把 `service_role` / secret 密钥写进任何前端文件，那等于把数据库钥匙发给每个访客。
@@ -174,8 +183,9 @@ node --test dev/test-rank.js                       # 13 条榜单计算纯函数
 ```
 .
 ├── index.html          页面入口
-├── config.js           后端开关与连接信息（需自己填）
+├── config.example.js   后端配置模板（复制成 config.js 再填；config.js 已被 .gitignore 忽略）
 ├── data.js             只读演示模式的展示数据（无账号）
+├── 九鸟.png            页头 logo 的占位图（**请换成你自己的图**；favicon 用的是内联 SVG，不占文件）
 ├── js/
 │   ├── config.js       配置读取 + 统一错误/提示条
 │   ├── songs.js        曲库加载、筛选排序、封面
@@ -209,9 +219,11 @@ node --test dev/test-rank.js                       # 13 条榜单计算纯函数
 ## 九、版权与许可
 
 - **代码：MIT**，见 [LICENSE](LICENSE)。可以自由使用、修改、分发，保留版权声明即可。
-- ⚠️ **曲目数据与曲绘不在 MIT 授权范围内**，本仓库也不分发它们：
-  - 曲名 / 曲师 / BPM / 难度 / 定数这类曲目资料，原始整理来自**萌娘百科**，版权与署名归其贡献者；
-  - 曲绘版权归 **Phigros 的曲师与插画师**，以及发行方 **Pigeon Games（鸽游）**。
-  - 想部署自己的实例，请自行准备数据并遵守来源方的许可；**不要**把别人受版权保护的素材按 MIT 再分发出去。
+- **本仓库里随代码一起按 MIT 分发的，只有代码本身与两张背景图**（`bg.jpg` / `bg2.jpg`，项目维护者自备素材）。
+- ⚠️ **下面这些不在 MIT 授权范围内，本仓库也不分发它们**：
+  - **曲目数据**（`songs.json`）：曲名 / 曲师 / BPM / 难度 / 定数这类资料，原始整理来自**萌娘百科**，版权与署名归其贡献者；
+  - **曲绘**（`covers/`）：版权归 **Phigros 的曲师与插画师**，以及发行方 **Pigeon Games（鸽游）**；
+  - **站点图标**：原图标取自游戏素材，版权不属本项目 ⇒ 本仓库用的是**自制占位图** `九鸟.png`，favicon 用内联 SVG。
+  - 想部署自己的实例，请自行准备数据与图标并遵守来源方的许可；**不要**把别人受版权保护的素材按 MIT 再分发出去。
 - 本站是非官方同人项目，**与 Pigeon Games（鸽游）无关**，不含任何商业化用途。
-- 版权方或作者要求下架相关内容，请通过仓库 Issues 联系。
+- 版权方或作者要求下架相关内容，请到 <https://github.com/tangpangpang5/phigros-rating-open/issues> 开 Issue 说明作品名与诉求（这是本项目唯一的反馈与下架入口）。

@@ -23,12 +23,19 @@ SOFTWARE.
 --------------------------------------------------------------------------
 注意 / NOTE
 
-上述 MIT 许可仅覆盖本仓库的**代码**。
+上述 MIT 许可仅覆盖本仓库的**代码**与项目所有者自备的两张背景图
+（`bg.jpg` / `bg2.jpg`）。
 
-本仓库**不包含**曲目数据（songs.json）与曲绘（covers/）：
-曲目资料原始整理来自萌娘百科，曲绘版权归 Phigros 的曲师、插画师与
-发行方 Pigeon Games（鸽游）所有 —— 这些内容不在本许可的授权范围内，
-也不得随本代码一起按 MIT 再分发。
+本仓库**不包含**下列内容，它们也不在本许可的授权范围内，不得随本代码按 MIT 再分发：
 
-The MIT license above covers the CODE in this repository only.
-Song data and cover artwork are NOT included and are NOT licensed here.
+  · 曲目数据（`songs.json`）：资料整理自萌娘百科，版权与署名归其贡献者；
+  · 曲绘（`covers/`）：版权归 Phigros 的曲师、插画师与发行方 Pigeon Games（鸽游）；
+  · 站点原始图标：取自游戏素材，版权不属本项目 —— 因此本仓库只带一张自制占位图
+    `九鸟.png`，favicon 使用内联 SVG，均不含第三方素材。
+
+The MIT license above covers the CODE in this repository and the two background
+images owned by the project owner (`bg.jpg` / `bg2.jpg`) only.
+
+Song data (`songs.json`) and cover artwork (`covers/`) are NOT included and are
+NOT licensed here. The original site icon is third-party artwork and is likewise
+not included; this repository ships a self-made placeholder (`九鸟.png`) instead.

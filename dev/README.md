@@ -2,6 +2,11 @@
 
 这些脚本**不是站点运行必需的**（站点只需要根目录那几个文件）。放在这里是为了能离线验证后端行为、以及跑完整用例。
 
+> 📌 本目录是「公开仓的 dev/」，与开发仓库里的原文件名对应关系：
+> `mocksupa.js ← dev/mocksupa.js`、`mocksupa-rpc.js ← dev/mocksupa-rpc.js`、
+> `test-rank.js ← dev/test-rank.js`、`test-auth.html / test-ui.html / test-rank-admin.html ← dev/test-*.html`。
+> 下面一律用本目录的文件名。
+
 ## 本地 Mock Supabase
 
 不需要联网、也不需要真实的 Supabase 项目：

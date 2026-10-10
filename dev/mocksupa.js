@@ -2,16 +2,16 @@
  * 运行：node dev/mocksupa.js   →  http://127.0.0.1:8123
  * 定位：**旧策略替身**（加固前的数据库语义）——故意没有列级权限检查，
  *       用来给 B1「is_admin 自提权漏洞确实存在」做对照。
- *       加固后的语义由 `dev/mocksupa-rpc.js`（8124）模拟，加固后的拒绝矩阵用它来验「必须被拒」。
+ *       加固后的语义由 `dev/mocksupa-rpc.js`（8124）模拟；「必须被拒」的拒绝矩阵用它来验。
  * 说明：会像真 Supabase 一样要求 Authorization: Bearer <access_token>，
  *       没有 token 的写入一律返回 42501（row-level security）错误。
  *
  * ============================ 夹具使用矩阵（本仓约定） ============================
  * 端口角色（谁打哪个端口，不允许混用）：
- *   · 8123  本文件，**旧策略对照组**          ← （本仓不含的安全探测脚本）（旧策略下自提权会成功，这是对照组的定义）
+ *   · 8123  本文件，**旧策略对照组**          （旧策略下自提权会成功 —— 这就是对照组的意义）
  *                                              ← `dev/test-auth.html`、`dev/test-ui.html`（必须用**干净启动的空库** 8123）
  *   · 8124  `dev/mocksupa-rpc.js`，**加固版**     ← `dev/test-rank-admin.html`（列级权限 + admin_set_admin 守卫 + 预置 root/user1）
- *   · 8125  本文件，**空库第三实例**           （榜单用例；只做受控数据，不依赖旧/加固语义）
+ *   · 8125  本文件，**空库第三实例**           （榜单用例；只做受控数据，不依赖旧/加固语义；本仓没有对应的用例页）
  * 启动方式（端口用环境变量覆盖，避免并行时互相踩状态）：
  *   MOCK_PORT=8123 node dev/mocksupa.js                        # 空库（默认；回归基线必须是这样）
  *   MOCK_PORT=8124 node dev/mocksupa-rpc.js                    # 加固版
@@ -22,7 +22,7 @@
  *      **必须**跑在干净启动的 8123；预置数据或复用实例会让它们失败（会把平均分污染成 7.5/6.5）。
  *   2) `/_test/reset` 只复位预置 users 行的 is_admin，**不清 authUsers**；
  *      要复现干净的 24/24、30/30 必须**重启进程**（先按端口持有者强杀，再校验 PID 变化）。
- *   3) 本文件是他人对照基线，**不得**给它加列级权限拒绝：那会让 「旧策略对照组」的意义就没了。
+ *   3) 本文件是他人对照基线，**不得**给它加列级权限拒绝：那会让它失去「旧策略对照组」的意义。
  *      加固语义一律加在 `dev/mocksupa-rpc.js`。
  *   4) 夹具（`dev/mocksupa*.js` 与 `dev/test-*.html` / `dev/test-rank.js`）由本仓统一维护，改动前请先开 Issue 说明。
  * ================================================================================================ */
@@ -267,7 +267,7 @@ const server = http.createServer(async (req, res) => {
          · 匿名读 users   —— 只投影 (id, username, created_at) 等公开列；请求 is_admin / nickname /
                             password_hash / salt 等敏感列时**不报错、也不返回该列**（等价于真库对
                             anon 隐藏这些列，password_hash 永不出现在匿名响应里）。
-                            这样「对照组」的 seed 行发现（私有开发仓的安全探测脚本:88 匿名读 id,username）
+                            这样「对照组」的 seed 行发现（匿名读 id,username 那条）
                             仍可用，而敏感列不会外泄。
          · 带令牌读 users  —— 返回真实行（含 is_admin）：B1 用普通账号令牌读回被改的那一行做对照。
          · profiles 视图  —— 匿名可读（grant select to anon）；已认证普通用户按 users_select_own
@@ -301,7 +301,7 @@ const server = http.createServer(async (req, res) => {
       const targets = filterRows(rows, query);
       /* 【本文件 = 旧策略替身】这里**故意没有**列级权限检查。
          真库的 supabase-setup.sql 已经加固（revoke update on public.users + grant update(nickname, avatar_color)），
-         加固后的行为由 dev/mocksupa-rpc.js（8124）负责模拟，用它来验「加固后必须被拒」。
+         加固后的行为由 dev/mocksupa-rpc.js（8124）负责模拟；「加固后必须被拒」的矩阵用它来验。
          本文件保留「旧策略」语义，专门用来做 B1 对照：证明这个洞在加固前确实存在。
          注：t4（独立验证）的 admin 用例打的是 8124 那份加固替身，不依赖本文件的宽松语义。 */
       targets.forEach(r => {

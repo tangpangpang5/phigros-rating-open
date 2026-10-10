@@ -4,6 +4,11 @@
 songs.json
 covers/
 
+# ---- 自己的后端配置：真正的 config.js 不要提交 ----
+# 仓库里带的是模板 config.example.js；照着复制一份再填自己的地址与公钥：
+#     cp config.example.js config.js
+config.js
+
 # ---- 打包产物 ----
 dist/
 dist.tmp/

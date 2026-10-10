@@ -18,9 +18,9 @@
       MOCK_PORT=8124 node dev/mocksupa-rpc.js          # 加固版（或 node dev/mocksupa-rpc.js 8124）
       # 无头 dump：http://localhost:8000/dev/test-rank-admin.html  → 期望 == 64 passed, 0 failed ==
   ⚠ 不要打 8123：那是 `dev/mocksupa.js`「旧策略对照组」，故意不加固（PATCH users.is_admin 会成功），
-    留给 （本仓不含的安全探测脚本） 的 B1 对照与 `dev/test-auth.html` / `dev/test-ui.html`（后两者必须空库干净启动）。
-  端口其他角色：8125=空库第三实例，给 本仓没有对应的用例页 用。
-  夹具由本仓统一维护，本文件改动前请先开 Issue 说明。
+    留给 `dev/test-auth.html` / `dev/test-ui.html`（后两者必须空库干净启动）。
+  端口其他角色：8125=空库第三实例本仓没有对应的用例页。
+  夹具由本仓统一维护；本文件改动前请先开 Issue 说明。
   ================================================================================================
 -->
 <header>
