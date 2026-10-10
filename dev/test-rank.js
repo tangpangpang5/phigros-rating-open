@@ -1,9 +1,9 @@
 /* =========================================================
- * _test-rank.js —— A 组判据：榜单计算口径（纯函数 rankRows/mostDiffOf）
- * 运行：node --test D:\phi\_test-rank.js
+ * dev/test-rank.js —— A 组判据：榜单计算口径（纯函数 rankRows/mostDiffOf）
+ * 运行：node --test dev/test-rank.js
  *
  * 为什么这么写：
- *   本目录没有 package.json（`serve.js` / `_mocksupa.js` 用的是 CommonJS），
+ *   本目录没有 package.json（`serve.js` / `dev/mocksupa.js` 用的是 CommonJS），
  *   node 会把 .js 当 CommonJS，无法直接 import 站点的 ES 模块。
  *   于是把 js/*.js **原样复制**（不改一字）到临时目录，并在那里放一份
  *   {"type":"module"} 的 package.json，再动态 import —— 这样被测代码与线上逐字节相同，

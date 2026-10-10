@@ -64,7 +64,7 @@
     <button id="appBtn" type="button" class="btn sm ghost" title="外观：浅/深 × 红/蓝">浅·红</button>
     <button id="styleBtn" type="button" class="btn sm" title="切换风格">简约</button>
     <div id="userArea"></div>
-    <!-- 设置入口（所有者 2026-10：原来在最顶上，够不着也反直觉，改到头像/退出按钮下面）。
+    <!-- 设置入口（2026-10：原来在最顶上，够不着也反直觉，改到头像/退出按钮下面）。
          header 是 flex-direction:column，折叠态与窄屏横条各自有规则，放这里三态都自然成立。
          ⚠️ 全站只有这一个 #settingsBtn（t19 的教训：隐藏它 = 手机上打不开设置面板）。 -->
     <div class="sb-tools">
@@ -103,7 +103,7 @@
     <!-- 右下角加载方块（读条）本身就是「跳过」按钮：
          整屏点击 / Esc / 点它，都在 150ms 内结束。里的 .trl-band 是循环扫过的亮带。
          几何/配色来自原版加载页截图的逐像素量测，见 layout.css 里 .trl-badge 的注释。
-         ⚠️ 2026-10 所有者反馈「读条时 loading 的字看不到了」⇒ 文字加回来（.trl-txt）。
+         ⚠️ 2026-10 使用反馈「读条时 loading 的字看不到了」⇒ 文字加回来（.trl-txt）。
             上一轮我按「不是文字形式的 loading」把方块做成纯图形，做过头了。 -->
     <button type="button" class="trl-badge" id="trlBadge" aria-label="跳过过渡动画">
       <span class="trl-txt">Loading…</span><span class="trl-band" aria-hidden="true"></span>
@@ -114,7 +114,7 @@
     <p class="trl-tip" aria-hidden="true">Tip: 曲绘与谱面资料，欢迎在站内反馈里纠错</p>
   </div>
 
-  <!-- 首屏载入的 Loading… 文字（所有者要求加上）。
+  <!-- 首屏载入的 Loading… 文字（要求加上）。
        ⚠️ 必须是**独立静态元素**，不能塞进首屏的伪元素里：
          首屏遮罩是 #main::before（压暗）+ #main::after（读条方块）两个伪元素画的，
          而一个伪元素只能有一个 background 层、放不下文字。

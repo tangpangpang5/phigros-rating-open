@@ -93,7 +93,7 @@ header .spacer { flex: 1; }
    但内容要跟滑就必须等价复现旧版的两段公式：
      展开 max(224px, calc(50% - 438px)) → 折叠 max(64px, calc(50% - 518px))
    这两段的差值并不相同（窄屏段差 160px、18xx 以下居中段差 80px），用一个固定
-   transform 平移无法同时匹配（Captain 已核对）。所以这里改为：**主内容与页脚直接切到
+   transform 平移无法同时匹配（维护者 已核对）。所以这里改为：**主内容与页脚直接切到
    折叠态的 margin-left（一次性布局，不逐帧）**，几何与旧版逐像素一致。
    动画仍由侧栏 + 把手承担（见上面的 header / #sbToggle，纯 transform 合成层）。 */
 main {
@@ -291,7 +291,7 @@ body.mode-dark .dd-opt.is-on.is-hi { background: #4d4d57; }
   footer { margin-left: 0; }
   #sbToggle { display: none; }
 
-  /* ---------- 吸顶工具栏在窄屏必须让位给顶部横条（所有者报「吸顶没用」的根因）----------
+  /* ---------- 吸顶工具栏在窄屏必须让位给顶部横条（报「吸顶没用」的根因）----------
      本区间 header 变成 position:sticky 的顶部横条、z-index 50(modern)/60(minimal)；
      而 .toolbar 的吸顶规则写的是 top:0 + z-index:40 ⇒ 两者在**同一块区域**重叠，
      且 header 层级更高 ⇒ 工具栏每次吸顶都被横条完整盖住。
@@ -324,7 +324,7 @@ body.mode-dark .dd-opt.is-on.is-hi { background: #4d4d57; }
   body.sb-collapsed main, body.sb-collapsed footer { margin-left: 0; }
 
   /* 窄屏这条横条是 flex-direction:row ⇒ 光把设置按钮的 DOM 排到头像之后还不够，
-     视觉上仍落在头像前面。所有者要的是「放到头像下面」这个位置关系，
+     视觉上仍落在头像前面。要的是「放到头像下面」这个位置关系，
      所以在 ≤880px 用 order 把它排到 #userArea 之后：DOM 顺序不动
      （桌面侧栏正是靠 DOM 顺序成立的），只改这一档的视觉顺序。
      桌面不在此媒体查询内，行为/顺序完全不变。 */
@@ -334,7 +334,7 @@ body.mode-dark .dd-opt.is-on.is-hi { background: #4d4d57; }
 /* =========================================================
    移动端细化（Prompt 5）
    ========================================================= */
-/* ⚠️ 这里必须是 clip，不能是 hidden（所有者报「吸顶按钮没用」的真因之一）：
+/* ⚠️ 这里必须是 clip，不能是 hidden（报「吸顶按钮没用」的真因之一）：
    `overflow-x: hidden` 会让 html/body 变成**滚动容器**，而滚动容器内的
    `position: sticky` 是相对那个容器定位的 ⇒ .toolbar 的吸顶彻底失效
    （实测：向下滚 1200px，工具栏停在 y=-688，本该粘在横条下缘）。
@@ -402,7 +402,7 @@ html, body { overflow-x: hidden; }
   .sb-tools { display: flex; flex: 0 0 auto; gap: 0; margin-bottom: 0; order: 9; }
   /* ⚠️ order: 9 必须在这条（≤600px）里也写一遍：它在 ≤880px 那条里已经写过，
      但这里重新声明了 .sb-tools 的其它属性，而两条媒体查询都可能命中 —— 少写这一份时
-     设置按钮会被排到头像**前面**（所有者要的是后面），实测 y=21/x=379 与预期不符。
+     设置按钮会被排到头像**前面**（要的是后面），实测 y=21/x=379 与预期不符。
      这是「同一个选择器分散在多个媒体查询里」的经典坑。 */
   .sb-tools .btn { position: relative; width: 28px; min-width: 28px; padding-left: 0; padding-right: 0; text-align: center; font-size: 15px; line-height: 1; }
   /* 触控目标 ≥44×44（iOS HIG）：视觉尺寸一个像素都不动，只多铺一层**完全透明**的 ::after
@@ -521,7 +521,7 @@ body {
 .rank-count-tip { margin-left: auto; align-self: center; font-size: 13px; color: var(--rk-dim); }
 
 /* ---------- 评论标题旁的难度筛选（全部 / EZ / HD / IN / AT）----------
-   所有者 2026-10 要求。与谱面区的 .diff-tab 无关：那条选"看哪张谱面"（影响评分），
+   2026-10 要求。与谱面区的 .diff-tab 无关：那条选"看哪张谱面"（影响评分），
    这里只筛"评论列表显示哪几条"。
    ⚠️ 选中态一律用**固定色**，不得引用会随主题/外观翻转的令牌
    （--ink/--card/--a-ink/--a-blue 之类）—— 同类错误本项目已犯过三次（nav a.active、
@@ -684,18 +684,18 @@ body.mode-dark .cmt-diff-btn.is-on { color: #1d1d1f; background: #f5f5f7; border
 .admin-user-name { font-weight: 700; font-size: 14px; color: var(--rk-ink); }
 .admin-user-me { font-weight: 400; font-size: 12px; color: var(--rk-faint); }
 /* ⚠️ 这里原来写的是 word-break: break-all —— 那会在**任何字符之间**断行，于是
-   「<示例邮箱>」被逐字符拆成 6 行（所有者 2026-10 截图实测）。
+   「<示例邮箱>」被逐字符拆成 6 行（2026-10 截图实测）。
    break-all 的本意是「防止超长串溢出」，但同样的目的用 overflow-wrap: anywhere 就能达到，
    而后者只在**放不下时**才断，且会优先找断点（@ . - _ 这些）⇒ 邮箱正常显示成一两行。
    同类错误全书只此一处（.admin-user-mail）。 */
 .admin-user-mail { font-size: 12px; color: var(--rk-dim); overflow-wrap: anywhere; }
 
 /* ---------- 窄屏：用户行保持**单行**，邮箱超长时省略号（悬停看全）----------
-   所有者两次截图报的是"邮箱被拆成一列单字"。根因是宽度，不是断行规则：
+   两次截图报的是"邮箱被拆成一列单字"。根因是宽度，不是断行规则：
      行内固定占用 = 头像 30 + 统计 79 + 身份标签 54 + 管理按钮 82 = **245px**
      398px 视口内容宽 344 ⇒ 邮箱只剩 59px；360px 时只剩 21px（就是一列单字）。
    2026-10 第三轮先试过"让整行换行、邮箱独占一行"——可读但行高从 59px 涨到 129px，
-   所有者裁定**不要那么高**，改为：单行 + 省略号 + `title` 悬停看全（title 由 js/admin.js 写）。
+   已定**不要那么高**，改为：单行 + 省略号 + `title` 悬停看全（title 由 js/admin.js 写）。
    ⇒ 阈值取 600px（与全站其它窄屏规则一致）。这一档只改用户行，桌面几何一个字没动。 */
 @media (max-width: 600px) {
   .admin-user-row { flex-wrap: wrap; padding: 8px 0; row-gap: 6px; }
@@ -765,7 +765,7 @@ body.mode-dark .cmt-diff-btn.is-on { color: #1d1d1f; background: #f5f5f7; border
   border-radius: 999px;
 }
 
-/* 站点版本胶囊（所有者要求把版本号标在主页）。与 .hero-ver 同族但更低调。 */
+/* 站点版本胶囊（要求把版本号标在主页）。与 .hero-ver 同族但更低调。 */
 .hero-site {
   font: 600 12px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   letter-spacing: .02em;
@@ -903,11 +903,11 @@ body.mode-dark .cmt-diff-btn.is-on { color: #1d1d1f; background: #f5f5f7; border
 
 /* 曲绘整层：铺满 + 模糊（原版实测 σ ≈ 屏宽 1.1%–2.2%，第一版取 clamp(6px,1.8vw,34px)）
    + scale(1.1) 补偿 blur 造成的边缘透明。
-   ⚠️ 2026-10 所有者两次下调：先「20-30% 就行」→ 34px 降到 7.2px（0.5vw），
+   ⚠️ 2026-10 两次下调：先「20-30% 就行」→ 34px 降到 7.2px（0.5vw），
    再「再淡一点」→ 现在 clamp(2px, 0.18vw, 5px)（1440 宽 ≈ 2.6px，约原版的 8%）。
    保留一点点糊是为了兑现「背景是虚化的曲绘」而不是一张清晰的曲绘
    （那会跟页面里的卡片曲绘打架、也让右下角方块的可读性变差）。
-   注：这个值现在已经**低于**从原版量测出的区间 —— 是所有者按观感选的，不是量测结论。 */
+   注：这个值现在已经**低于**从原版量测出的区间 —— 是按观感选的，不是量测结论。 */
 .trl-bg {
   position: absolute;
   inset: 0;
@@ -936,7 +936,7 @@ body.mode-dark .cmt-diff-btn.is-on { color: #1d1d1f; background: #f5f5f7; border
 
 /* ---------- 右下角「加载方块」 —— 纯图形，方块内没有任何文字 ----------
    取值来源：用户提供的原版截图（1440×1080）逐像素量测，报告见
-   `_验收截图-切风格/loading-原版-量测.json` 与 `loading-原版-徽标剖面.json`：
+   `私有开发仓的验收截图/loading-原版-量测.json` 与 `loading-原版-徽标剖面.json`：
      · 方块 x 1247–1350、y 982–1025 ⇒ 139×44px ｜ 右距 89px（6.18% 屏宽）｜ 下距 54px（5.00% 屏高）
      · 方块底色 rgb(93,93,93) = #5D5D5D；左缘有一道亮扫描带（列均值从 42 升到 75 的过渡）
      · 按屏宽/屏高换算：宽 9.65vw、高 4.07vh ⇒ 这里用同比例（不同分辨率下等比缩放）
@@ -958,7 +958,7 @@ body.mode-dark .cmt-diff-btn.is-on { color: #1d1d1f; background: #f5f5f7; border
         浏览器给出的计算值是 116.4px（1440 宽下），**比 9.65vw=139px 还小** ——
         也就是说"至少按原版比例"这个意图没被兑现，这种写法太脆。
      改为直接的可预测取值，并说明它相对原版的变化：
-        · 1440 宽：9.65vw=139px → **38vw=547px**（所有者 2026-10-01：「改为 70-80% 的填充，
+        · 1440 宽：9.65vw=139px → **38vw=547px**（2026-10-01：「改为 70-80% 的填充，
           不然太小了」；这里给到一个明显更大、但不会横贯整屏的量级）
         · 390 宽手机：原 38px（连 "Loading…" 都装不下，实测被裁）→ **148px**
         · 上限 300px 防止超宽屏上大得离谱；桌面实测约 300px。
@@ -985,7 +985,7 @@ body.mode-dark .cmt-diff-btn.is-on { color: #1d1d1f; background: #f5f5f7; border
   align-items: center;
   justify-content: center;
 }
-/* 读条文字 —— 2026-10 所有者反馈「读条时 loading 的字看不到了」加回来的。
+/* 读条文字 —— 2026-10 使用反馈「读条时 loading 的字看不到了」加回来的。
    上一轮我按「不是文字形式的 loading」把方块做成纯图形，**做过头了**，这里改回。
    配色按原版量测：浅灰字压在深灰方块上（白底黑字是更早的形态，已经不是现在这个）。 */
 .trl-txt {
@@ -1101,7 +1101,7 @@ html.is-booting #main::after {
 }
 
 
-/* 首屏载入的 Loading… 文字（所有者要求加上）。
+/* 首屏载入的 Loading… 文字（要求加上）。
    首屏遮罩用的是 #main 的两个伪元素（::before 压暗、::after 画读条方块），
    一个伪元素只能放一个 background 层、放不下文字，所以文字用**独立静态元素** .boot-txt
    （写在 index.html 里，显隐由 <html>.is-booting 控制）。

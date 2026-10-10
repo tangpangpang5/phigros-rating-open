@@ -268,7 +268,7 @@ export function router() {
   const hash = location.hash || '#/';
   const m = hash.match(/^#\/song\/([\w-]+)/);
   if (m && getSong(m[1])) {
-    /* 换到**另一首**曲子时把评论难度筛选重置回「全部」（所有者 2026-10 选定）。
+    /* 换到**另一首**曲子时把评论难度筛选重置回「全部」（2026-10 选定）。
        只判 id 变化：同一首曲子内切难度页签不该把筛选也清掉。
        不清掉的后果很具体：上一首选了「EZ」，点进一首没有 EZ 评论的曲子就是空列表，
        看起来像坏了。 */
@@ -343,7 +343,7 @@ function renderHeader() {
 /* ---------------- 首页 ---------------- */
 /* 排序方向按钮：只在**方向真的有意义**时才出现。
    「最新收录」是按加入时间排的，没有升降序之分 —— 旧版此时把按钮变成 disabled 的「固定」，
-   于是工具栏里多出一个不能点、又和排序下拉挤在一起的按钮（所有者 2026-10 报：
+   于是工具栏里多出一个不能点、又和排序下拉挤在一起的按钮（2026-10 报：
    「固定和排序占用同一个交互按钮，导致我在主界面没有办法排序」）。
    现在直接隐藏：少一个假控件，排序下拉自己独占位置。 */
 function updateDirBtn() {
@@ -377,7 +377,7 @@ function renderHome() {
         '<div class="hero-badges">' +
           '<div class="hero-badge">玩家自制</div>' +
           '<div class="hero-ver" title="曲库数据版本">曲库数据已更新至 3.19.0，热更新曲目尚未收录</div>' +
-          /* 站点版本号（所有者 2026-10-01：「以后把网站的版本号标到主页方便我检查」）。
+          /* 站点版本号（2026-10-01：「以后把网站的版本号标到主页方便我检查」）。
              ⚠️ 不新增版本常量：直接从本站样式表链接的 ?v= 上读 —— 那 6 处在发版时本来就会一起改，
                 所以这里永远和实际部署版本一致，不会出现"两处版本号对不上"。
              读不到时显示 '?'，不猜。 */
@@ -586,13 +586,13 @@ function renderChart() {
         '</div>' +
 
         '<div class="col comment-col">' +
-          /* 「评论」旁边这个难度筛选（所有者 2026-10 要求：全部 / EZ / HD / IN / AT）
+          /* 「评论」旁边这个难度筛选（2026-10 要求：全部 / EZ / HD / IN / AT）
              ⚠️ 它和上面谱面区的 .diff-tab **是两件事**：
                · .diff-tab 选的是「你在看哪张谱面」——影响评分与难度信息；
                · 这个 .cmt-diff 只筛「评论列表里显示哪几条」，不动评分。
-             所有者原话是希望切难度时评分与评论筛选**分开**，所以这里做成独立控件。
+             当时的诉求是切难度时评分与评论筛选**分开**，所以这里做成独立控件。
              ⚠️ 2026-10 修正：选项从「固定五个」改为**按这首曲子实际有的难度给**
-             （所有者反馈：一部分谱面没有 AT，但评论却能选 AT）。谱面区本来就是按
+             （使用反馈：一部分谱面没有 AT，但评论却能选 AT）。谱面区本来就是按
              song.difficulties 生成的，这里跟它对齐即可 —— 于是没有 AT 的谱面也就不再有 AT 选项。 */
           '<h2>评论 <span class="count-tag">' + cmts.length + '</span>' +
             '<span class="cmt-diff" role="group" aria-label="按难度筛选评论">' +
@@ -691,10 +691,10 @@ function renderComments(cmts) {
   /* 难度徽标来自**这条评论自己**的 difficulty 字段（发表时固化下来的那张谱面）。
      2026-10 修正：此前这里收的是「页面当前选中的难度」参数，于是切难度时**所有**评论的
      徽标一起变 —— 那是「评论表还没有难度字段」时代的权宜口径（当时代码里也如实标注了
-     「并不能真正区分一条历史评论到底评的是哪张谱面」）。所有者现要求固化，故：
+     「并不能真正区分一条历史评论到底评的是哪张谱面」）。现在要求固化，故：
        · 有 difficulty ⇒ 显示它；
        · 没有（2026-10 之前的历史评论，或发表时未带）⇒ 不显示徽标，宁可不标也不编一个。
-     只打标签、不按难度筛选列表：同一首曲子的各难度评论仍混在一起看（所有者 2026-10 选定）。 */
+     只打标签、不按难度筛选列表：同一首曲子的各难度评论仍混在一起看（2026-10 选定）。 */
   return cmts.map(c => {
     const d = c.difficulty;
     const diffTag = (typeof d === 'string' && d)
@@ -988,7 +988,7 @@ function loadSettings() {
   catch (e) { settings = {}; }
   SETTINGS_DEFS.forEach(d => { if (settings[d.key] === undefined) settings[d.key] = d.def; });
   /* 「实验室」分组（不在 SETTINGS_DEFS 里，因为它在面板中单独成组）。
-     ⚠️ 2026-10 所有者裁定改为**默认开**（原文：「动画现在没什么问题了，默认开启」）。
+     ⚠️ 2026-10 已定改为**默认开**（原文：「动画现在没什么问题了，默认开启」）。
      注意这里只对「还没有存过这个键」的用户生效：已经手动关掉的人 localStorage 里是 false，
      会被保留，不会被这次改动强行打开。 */
   if (settings.transitionOn === undefined) settings.transitionOn = true;
@@ -1126,15 +1126,15 @@ function closeSettings() { const m = document.getElementById('settingsModal'); i
 /* =========================================================
  * 风格 / 外观切换的全屏过渡动画（Phigros 加载页语言）
  *
- * 规格来源：看板.md「已排期：风格切换过渡动画（用户新需求，5 轮拷问定稿 2026-09-19）」
+ * 规格来源：私有开发仓的进度台账「已排期：风格切换过渡动画（用户新需求，5 轮拷问定稿 2026-09-19）」
  *   ＋ 本轮新增口径：**动画要持续到「新主题真正渲染完成」再淡出**。
  *
  * ⚠️ 2026-10 口径修订（**以本节为准**，与看板里旧规格冲突时按这里）：
  *   遮罩上的元素从「白底黑字 Loading… 徽标」改成**右下角纯图形加载方块**（方块内无任何文字）
- *   ＋ 左下角一行小字提示。依据是所有者提供的原版 Phi growth 加载页截图逐像素量测：
+ *   ＋ 左下角一行小字提示。依据是提供的原版 Phi growth 加载页截图逐像素量测：
  *   方块 139×44px、底色 rgb(93,93,93)、右距 89px(6.18%)、下距 54px(5%)，
  *   另有一道循环扫过的亮带。取图/取值位置见 layout.css 的 .trl-badge 注释。
- *   所有者明确否掉文字形式（"不是现在这种文字形式的 loading"），所以这里**不再有** Loading… 文案。
+ *   明确否掉文字形式（"不是现在这种文字形式的 loading"），所以这里**不再有** Loading… 文案。
  *
  * 钩子位置（硬约束）：只挂在 4 个用户动作点 —— #styleBtn / #appBtn / 设置面板「风格」/「外观」。
  *   绝不挂进 setStyleCss() / applyAppearance() 本体：initUI() 启动时会调用它们，
@@ -1191,7 +1191,7 @@ function trlReduce() {
 function trlFullOn() { return settings.transitionOn === true && !trlReduce(); }
 
 /* 遮罩骨架（与 index.html 中静态写好的那一份**逐字符一致**）。
-   index.html 里必须静态写；这里是给 _test-*.html 这类没有该骨架的夹具页兜底补建，
+   index.html 里必须静态写；这里是给 dev/test-*.html 这类没有该骨架的夹具页兜底补建，
    否则夹具点 #styleBtn 会拿到 null 直接抛异常。仍然挂在 body 上（不放 #main）。 */
 const TRL_HTML =
   '<div class="trl-bg" id="trlBg"></div>' +
@@ -1211,7 +1211,7 @@ function trlEl() {
   ov.hidden = true;
   ov.innerHTML = TRL_HTML;
   /* ⚠️ 这里**不再**无条件挂点击监听。原来挂的是整屏 click → trlSkip，于是「取图/等主题」
-     那段点一下屏幕就把动画掐掉了（所有者 2026-10-01 报的 bug）。
+     那段点一下屏幕就把动画掐掉了（2026-10-01 报的 bug）。
      现在统一由 trlArmSkip() 在「遮罩已铺满」之后挂上、每轮开始与收尾时摘掉。
      两处入口（这里的兜底骨架、index.html 的静态骨架）走的是同一个函数，不会再各挂一份。 */
   document.body.appendChild(ov);
@@ -1350,7 +1350,7 @@ function trlWaitApplied(opt) {
       if (opt.gen !== trlGen) { finish(false, true); return; }
       /* 判据回到 v1.0.15 那版（只判「目标主题表已启用」）。
          ⚠️ 曾经加强成「还要 CSSOM 有规则」，结果换表慢时会把遮罩卡到 8 秒 ——
-            而那段里页面没有主题样式，观感就是"曲绘还没出来 CSS 先掉了"（所有者两轮反馈的同一症状）。
+            而那段里页面没有主题样式，观感就是"曲绘还没出来 CSS 先掉了"（维护者两轮反馈的同一症状）。
             现在松判据 + 2.5s 上限：宁可早点收尾，也不长时间盖着一个没样式的页面。 */
       const sheetOk = !opt.styleKey || (() => {
         const el = document.getElementById('css-' + opt.styleKey);
@@ -1470,7 +1470,7 @@ function trlRun(kind, apply, onDone, toastMsg, styleKey) {
   trlSolidFade(ov, gen, apply, done);
 }
 /* ---------- 「跳过」的挂载 / 摘除 ----------
-   所有者 2026-10-01 反馈：「在动画过程中点击网页动画就没有了，修一下」。
+   2026-10-01 反馈：「在动画过程中点击网页动画就没有了，修一下」。
    根因就是原来在这里**初始化时就把整屏点击接成了跳过** —— 于是动画刚起来、
    甚至还在取图/等主题重算的那段，用户随手点一下屏幕就被判定为"跳过"，动画直接收尾。
    改法：把监听改成「只有遮罩**已经铺满**（is-on 且不透明）之后才生效」，
@@ -1504,7 +1504,7 @@ function trlArmSkip(on) {
 }
 
 /* 兜底路径：纯色极简遮罩 150ms 淡化（仅切风格）。
-   ⚠️ apply() 必须**同步**执行 —— _test-ui.html 有一条既有断言在点击后**同步**读
+   ⚠️ apply() 必须**同步**执行 —— dev/test-ui.html 有一条既有断言在点击后**同步**读
       `#css-modern.disabled`，走成异步就会假失败。 */
 function trlSolidFade(ov, gen, apply, done) {
   trlRunning = true;
@@ -1542,14 +1542,14 @@ async function trlPlayFull(ov, gen, kind, apply, styleKey, done) {
   trlLockScroll();
 
   /* ① 取图：**等图真的就绪再开始淡入**（回到 v1.0.15 的时序）。
-     为什么必须这样（所有者 2026-10-01 第三轮定位 + 我的代码核对）：
+     为什么必须这样（2026-10-01 的第三轮定位 + 代码核对）：
        上一版我改成「动画立刻上、曲绘随后 400ms 淡入」，做法是先把曲绘层压到 opacity 0、
        再立刻让遮罩全屏不透明，然后才切主题。问题出在取图这段：遮罩已经在播（用户看得见），
        而 (a) trlWaitApplied 当时要求「目标样式表 CSSOM 已建立且有规则」会一直卡到 8 秒上限，
        (b) 那段里页面没有主题样式 ⇒ 观感就是**曲绘出现之前 CSS 先掉了**（1.0.20 同款症状）。
        本次两处一起改回 1.0.15 的时序与松判据（trlWaitApplied 现在只判「表已启用」+ 2.5s 上限）。
      等图就绪再显示遮罩则完全没有这个窗口：取图期间页面根本没被遮罩碰过。
-     代价：图慢时动画起步晚一点（所有者已确认接受，1.0.15 就是这么跑的）。
+     代价：图慢时动画起步晚一点（已确认接受，1.0.15 就是这么跑的）。
      先把背景清空，避免等图期间露出上一轮的曲绘。 */
   trlSetBg('');
   const pick = trlStartPick();
@@ -1574,7 +1574,7 @@ async function trlPlayFull(ov, gen, kind, apply, styleKey, done) {
   if (gen !== trlGen) { trace.skip = true; return; }
   trace.opaqueAt = opaque.at;
   trace.opaqueOk = opaque.ok;
-  /* ⚠️ 这里**不再**开放「跳过」。所有者 2026-10-01 第三条口径：
+  /* ⚠️ 这里**不再**开放「跳过」。2026-10-01 定的口径：
      「必须等播放完整结束；播放未结束时，跳过操作不应生效。」
      ⇒ 整个播放期间（铺满之后也算）点击/点方块/Esc 都不生效；
        直到 ⑤ 淡出结束、遮罩收起来之后才由 trlPlayFull 末尾开放（那时点它已经无事可做，
@@ -1798,7 +1798,7 @@ export function initUI() {
   const settingsBtn = $('#settingsBtn');
   if (settingsBtn) settingsBtn.addEventListener('click', openSettings);
 
-  /* ---------- 窄屏吸顶工具栏的让位高度（所有者报「吸顶没用」的根因之一）----------
+  /* ---------- 窄屏吸顶工具栏的让位高度（报「吸顶没用」的根因之一）----------
      ≤880px 时 header 变成顶部**横条**（position:sticky）且 z-index 比工具栏高，
      工具栏的吸顶 top:0 正好落在横条底下 ⇒ 每次吸顶都被完整盖住，看起来像"没生效"。
      CSS 侧改成 top: calc(var(--hdr-h) + 安全区)，这里把横条的**实测高度**写进 --hdr-h。
@@ -1826,7 +1826,7 @@ export function initUI() {
     if (e.key !== 'Escape') return;
     const ov = document.getElementById(TRL_ID);
     if (!ov || ov.hidden) return;
-    /* ⚠️ 与整屏点击用**同一把闸**。所有者 2026-10-01 第一条口径：
+    /* ⚠️ 与整屏点击用**同一把闸**。2026-10-01 定的口径：
        「必须等播放完整结束；播放未结束时，跳过操作不应生效。」—— 播放期间 Esc 同样不生效。
        （早先我给它留了更早的触发点：拿到 is-on 就算数。而 is-on 在淡入一开始就加上了，
         于是压测里 Esc 仍能把动画掐掉：实测 skip=true、endAt 始终为空。这里收回。） */

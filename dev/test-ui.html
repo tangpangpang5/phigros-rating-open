@@ -4,17 +4,17 @@
 <meta charset="UTF-8" />
 <title>UI 端到端自测</title>
 <!--
-  ============================ 夹具使用矩阵（Captain 裁定，交接以此为准） ============================
-  本页打 **8123 的 `_mocksupa.js`（旧策略对照组）**，且**每页各起一个干净启动的空库实例**：
-  本页会注册新账号、写评分与评论；若与 `_test-auth.html` 共用同一个实例（或复用旧实例），
+  ============================ 夹具使用矩阵（本仓约定） ============================
+  本页打 **8123 的 `dev/mocksupa.js`（旧策略对照组）**，且**每页各起一个干净启动的空库实例**：
+  本页会注册新账号、写评分与评论；若与 `dev/test-auth.html` 共用同一个实例（或复用旧实例），
   会因残留状态报 `EXCEPTION Failed to fetch`（实测掉到 5/1）。
   复现命令：
       # 每页各自：按端口持有者强杀 8123 → 确认 PID 变化 → 空库启动
-      MOCK_PORT=8123 node _mocksupa.js
-      # 无头 dump：http://localhost:8000/_test-ui.html   → 期望 == 30 passed, 0 failed ==
-  端口其他角色：8124=加固版（`_mocksupa-rpc.js`，给 `_test-admin.html`/`_test-rank-admin.html` 用）；
-               8125=空库第三实例（给 `_test-rank.html` 用）。
-  夹具单一 owner = 需求与验收；本文件改前先报 Captain。
+      MOCK_PORT=8123 node dev/mocksupa.js
+      # 无头 dump：http://localhost:8000/dev/test-ui.html   → 期望 == 30 passed, 0 failed ==
+  端口其他角色：8124=加固版（`dev/mocksupa-rpc.js`，给 /`dev/test-rank-admin.html` 用）；
+               8125=空库第三实例（给 本仓没有对应的用例页 用）。
+  夹具由本仓统一维护，本文件改动前请先开 Issue 说明。
   ================================================================================================
 -->
 <link rel="stylesheet" href="modern.css" id="css-modern" />

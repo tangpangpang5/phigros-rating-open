@@ -1,34 +1,34 @@
 /* 开发用：极简 Supabase 模拟服务（Auth + PostgREST 子集），仅用于本地自测
- * 运行：node _mocksupa.js   →  http://127.0.0.1:8123
+ * 运行：node dev/mocksupa.js   →  http://127.0.0.1:8123
  * 定位：**旧策略替身**（加固前的数据库语义）——故意没有列级权限检查，
  *       用来给 B1「is_admin 自提权漏洞确实存在」做对照。
- *       加固后的语义由 `_mocksupa-rpc.js`（8124）模拟，B2/B3..B12 用它来验「必须被拒」。
+ *       加固后的语义由 `dev/mocksupa-rpc.js`（8124）模拟，加固后的拒绝矩阵用它来验「必须被拒」。
  * 说明：会像真 Supabase 一样要求 Authorization: Bearer <access_token>，
  *       没有 token 的写入一律返回 42501（row-level security）错误。
  *
- * ============================ 夹具使用矩阵（Captain 裁定，交接以此为准） ============================
+ * ============================ 夹具使用矩阵（本仓约定） ============================
  * 端口角色（谁打哪个端口，不允许混用）：
- *   · 8123  本文件，**旧策略对照组**          ← `_probe-rank-admin.js`（它的 B1 依赖 8123 上「自提权必须成功 204」）
- *                                              ← `_test-auth.html`、`_test-ui.html`（必须用**干净启动的空库** 8123）
- *   · 8124  `_mocksupa-rpc.js`，**加固版**     ← `_test-rank-admin.html`、`_test-admin.html`（列级权限 + admin_set_admin 守卫 + 预置 root/user1）
- *   · 8125  本文件，**空库第三实例**           ← `_test-rank.html`（榜单用例；只做受控数据，不依赖旧/加固语义）
+ *   · 8123  本文件，**旧策略对照组**          ← （本仓不含的安全探测脚本）（旧策略下自提权会成功，这是对照组的定义）
+ *                                              ← `dev/test-auth.html`、`dev/test-ui.html`（必须用**干净启动的空库** 8123）
+ *   · 8124  `dev/mocksupa-rpc.js`，**加固版**     ← `dev/test-rank-admin.html`（列级权限 + admin_set_admin 守卫 + 预置 root/user1）
+ *   · 8125  本文件，**空库第三实例**           （榜单用例；只做受控数据，不依赖旧/加固语义）
  * 启动方式（端口用环境变量覆盖，避免并行时互相踩状态）：
- *   MOCK_PORT=8123 node _mocksupa.js                        # 空库（默认；回归基线必须是这样）
- *   MOCK_PORT=8124 node _mocksupa-rpc.js                    # 加固版
- *   MOCK_PORT=8125 node _mocksupa.js                        # 空库第三实例
- *   MOCK_PORT=8125 MOCK_SEED_DATA=1 node _mocksupa.js       # 预置站点所有者管理员（本文件一般不需要）
+ *   MOCK_PORT=8123 node dev/mocksupa.js                        # 空库（默认；回归基线必须是这样）
+ *   MOCK_PORT=8124 node dev/mocksupa-rpc.js                    # 加固版
+ *   MOCK_PORT=8125 node dev/mocksupa.js                        # 空库第三实例
+ *   MOCK_PORT=8125 MOCK_SEED_DATA=1 node dev/mocksupa.js       # 预置站点所有者管理员（本文件一般不需要）
  * 硬性注意：
- *   1) `_test-auth.html` / `_test-ui.html` 断言「profiles 初始为空」「平均分唯一」「评论数 1」，
+ *   1) `dev/test-auth.html` / `dev/test-ui.html` 断言「profiles 初始为空」「平均分唯一」「评论数 1」，
  *      **必须**跑在干净启动的 8123；预置数据或复用实例会让它们失败（会把平均分污染成 7.5/6.5）。
  *   2) `/_test/reset` 只复位预置 users 行的 is_admin，**不清 authUsers**；
  *      要复现干净的 24/24、30/30 必须**重启进程**（先按端口持有者强杀，再校验 PID 变化）。
- *   3) 本文件是他人对照基线，**不得**给它加列级权限拒绝：那会让 `_probe-rank-admin.js` 的 B1 失败。
- *      加固语义一律加在 `_mocksupa-rpc.js`。
- *   4) 夹具（`_mocksupa*.js` 与 `_test-*.html` / `_test-rank.js`）单一 owner = 需求与验收；改前先报 Captain。
+ *   3) 本文件是他人对照基线，**不得**给它加列级权限拒绝：那会让 「旧策略对照组」的意义就没了。
+ *      加固语义一律加在 `dev/mocksupa-rpc.js`。
+ *   4) 夹具（`dev/mocksupa*.js` 与 `dev/test-*.html` / `dev/test-rank.js`）由本仓统一维护，改动前请先开 Issue 说明。
  * ================================================================================================ */
 const http = require('http');
 /* 端口可用环境变量覆盖：多个人/多个用例并行时各自起一个互不干扰的实例
-   例：MOCK_PORT=8125 node _mocksupa.js ；MOCK_PORT=8125 MOCK_SEED_DATA=1 node _mocksupa.js */
+   例：MOCK_PORT=8125 node dev/mocksupa.js ；MOCK_PORT=8125 MOCK_SEED_DATA=1 node dev/mocksupa.js */
 const PORT = Number(process.env.MOCK_PORT || 8123);
 
 const DB = { authUsers: [], profiles: [], ratings: [], comments: [], users: [] };
@@ -58,9 +58,9 @@ SEED_USER_IDS.forEach((id, i) => {
 
 /* 预置「站点所有者」管理员账号：对应真库里「已注册并已在 SQL Editor 里手工提权」的那一个账号。
    管理员后台/提权用例需要一个本来就存在的管理员才能测（否则谁也没权限提权谁）。
-   ⚠ 默认不加载 —— 既有 _test-auth.html / _test-ui.html 依赖「空库」基线（profiles 初始为空、
+   ⚠ 默认不加载 —— 既有 dev/test-auth.html / dev/test-ui.html 依赖「空库」基线（profiles 初始为空、
      评论数为 1、平均分唯一），预置行会破坏它们。需要基线的用例用：
-       MOCK_SEED_DATA=1 node _mocksupa.js
+       MOCK_SEED_DATA=1 node dev/mocksupa.js
      打开；默认启动仍是完全空库。 */
 const SEED_ON = process.env.MOCK_SEED_DATA === '1';
 const SEED_ADMIN = {
@@ -263,11 +263,11 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === 'GET') {
       const out = filterRows(rows, query);
-      /* 模拟 RLS 读策略（Captain 裁决后的夹具职责，见文件头说明）：
+      /* 模拟 RLS 读策略（夹具职责，见文件头说明）：
          · 匿名读 users   —— 只投影 (id, username, created_at) 等公开列；请求 is_admin / nickname /
                             password_hash / salt 等敏感列时**不报错、也不返回该列**（等价于真库对
                             anon 隐藏这些列，password_hash 永不出现在匿名响应里）。
-                            这样 B1 的 seed 行发现（_probe-rank-admin.js:88 匿名读 id,username）
+                            这样「对照组」的 seed 行发现（私有开发仓的安全探测脚本:88 匿名读 id,username）
                             仍可用，而敏感列不会外泄。
          · 带令牌读 users  —— 返回真实行（含 is_admin）：B1 用普通账号令牌读回被改的那一行做对照。
          · profiles 视图  —— 匿名可读（grant select to anon）；已认证普通用户按 users_select_own
@@ -301,7 +301,7 @@ const server = http.createServer(async (req, res) => {
       const targets = filterRows(rows, query);
       /* 【本文件 = 旧策略替身】这里**故意没有**列级权限检查。
          真库的 supabase-setup.sql 已经加固（revoke update on public.users + grant update(nickname, avatar_color)），
-         加固后的行为由 _mocksupa-rpc.js（8124）负责模拟，B2 用它来验「加固后必须被拒」。
+         加固后的行为由 dev/mocksupa-rpc.js（8124）负责模拟，用它来验「加固后必须被拒」。
          本文件保留「旧策略」语义，专门用来做 B1 对照：证明这个洞在加固前确实存在。
          注：t4（独立验证）的 admin 用例打的是 8124 那份加固替身，不依赖本文件的宽松语义。 */
       targets.forEach(r => {

@@ -47,7 +47,7 @@ create table if not exists public.comments (
   user_id text not null,
   text text not null,
   created_at bigint,
-  -- 发表评论时所在的谱面难度（所有者 2026-10 需求：评论要固化它评的是哪张谱面，
+  -- 发表评论时所在的谱面难度（2026-10 需求：评论要固化它评的是哪张谱面，
   -- 不能跟着页面当前选中的难度变）。**可空是刻意的**：本字段之前的历史评论没有记录，
   -- 无法可靠还原，编一个难度等于伪造数据 ⇒ 留 null，前端对 null 不显示难度徽标。
   -- 取值与 js/storage.js 的 DIFF_LEVELS、js/songs.js 的 difficulties[].level 三处一致。
@@ -379,7 +379,7 @@ create policy "feedback_update_admin_only" on public.feedback
 -- 为什么这一行很关键（评审发现的 blocker）：表级 `grant insert` 会让客户端**自己填
 -- `created_at`**。而默认值只是「没提供时的兜底」、不是约束 —— 于是任何人都能拿公开的
 -- anon key 反复提交并把 created_at 写成很久以前，**把 60 秒限频整个绕开**；
--- 又因为本表不可删除，结果是「可无上限刷库 + 只能所有者在 SQL Editor 手工清理」。
+-- 又因为本表不可删除，结果是「可无上限刷库 + 只能在 SQL Editor 手工清理」。
 -- 改成列级授权后，客户端连"发送 created_at"这个动作都会被 42501 拒掉（权限先于触发器）。
 -- （同样的弱点在 ratings/comments 上已存在并被上一轮接受，但那两张表管理员能删；
 --   本表不能删 ⇒ 严重度更高，故本批单独收紧。那两表是否一并收紧另开任务。）
@@ -522,7 +522,7 @@ grant execute on function public.admin_set_feedback_handled(text, boolean) to au
 --     · 未登录写入本来就被 RLS 拒绝（comments/ratings 的 insert 策略都要求 auth.uid() = user_id），
 --       所以这条 raise 挡不住任何**合法**写入，不会破坏功能；
 --     · 反过来，若写成「未登录 → 计数为 0 → return new」，就等于让触发器在匿名路径上**恒定放行**：
---       一旦哪天 RLS 被 `_临时放行.sql` 或手工改松，限频就静默失效了（多出一条假防线）；
+--       一旦哪天 RLS 被手工改松，限频就静默失效了（多出一条假防线）；
 --     · 拒绝还有个附带好处：匿名刷接口时立刻拿到「请先登录」的提示，而不是让请求一路走到 RLS 才失败。
 --   错误码统一用 42501（与文件里其它守卫一致；语义上也有人用 53400，这里为保持一致选 42501）。
 --   锁：先取事务级 advisory lock（键 = hashtextextended(uid,0)），避免并发请求各自读到同一份计数而一起放行
@@ -600,7 +600,7 @@ create index if not exists comments_user_created_idx on public.comments (user_id
 -- users 表策略收紧后前端无法替别人插入行，因此由触发器（SECURITY DEFINER）完成。
 --
 -- ⚠️ 2026-10 修复（真机事故，根因已用生产数据证实）：
---   事故现象：所有者在 Supabase 控制台删掉一个邮箱后，用**同一个邮箱**重新注册，
+--   事故现象：在 Supabase 控制台删掉一个邮箱后，用**同一个邮箱**重新注册，
 --             注册失败，界面报 `duplicate key value violates unique constraint "users_username_key"`。
 --   根因：控制台的删除只删 `auth.users` 那一行，**不会**连带删 `public.users` 里的资料行
 --         （两者之间没有外键级联）。于是留下一条"孤儿资料行"，它的 username 就是那个邮箱。
@@ -611,7 +611,7 @@ create index if not exists comments_user_created_idx on public.comments (user_id
 --         ① 同一 id 重复注册（控制台删了邮箱又用同邮箱注册，id 不变）→ 把 username 改回当前邮箱；
 --         ② 已被管理员改过邮箱的账号 → 资料行的 username 跟着更新，不再留旧邮箱；
 --         ③ 唯一的键是 id ⇒ 这条 upsert 不会因为别的行占用邮箱而失败。
---         ⚠️ 它只能防"同一 id"的冲突；历史遗留的**不同 id 孤儿行**必须清掉（见 _deploy-signup-fix.sql）。
+--         ⚠️ 它只能防"同一 id"的冲突；历史遗留的**不同 id 孤儿行**必须清掉（见 私有开发仓的一次性修复脚本）。
 --   为什么不删孤儿行就算了：孤儿行是历史数据，删了这条；下次再删邮箱还会再造一条。
 --   为什么不用 `do nothing` + 先 delete：注册路径上做 delete 会把"删数据"放进一个
 --         由匿名注册触发的触发器里，代价与风险都比 upsert 大。
@@ -798,7 +798,7 @@ revoke insert, update, delete on public.profiles from anon, authenticated;
 --        收尾必须回查并清理：先 `select count(*) from public.comments where song_id='__ratelimit__';`
 --        再用 `DELETE /rest/v1/comments?song_id=eq.__ratelimit__`（只能删自己的）删掉，并**再回查一次 count = 0**。
 --        （这条只能由你执行：成员不得对生产库做会落库的写探测。）
--- 7) 想临时排查问题可以执行 _临时放行.sql（会关闭 RLS，排查完务必重新跑本脚本）
+-- 7) 想临时排查问题可以手工关掉某张表的行级安全策略（本仓库不含这类脚本）；**排查完务必重新跑本脚本**，否则那张表会一直裸奔；生产库上不要这样排查。
 -- 8) 站内反馈（5a 段的验证）：
 --      ★ 只读核对（SQL Editor，先做这一步：表/策略/函数/触发器在不在）：
 --        select column_name, data_type, column_default, is_nullable

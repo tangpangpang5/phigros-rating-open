@@ -39,7 +39,7 @@ export async function signUp(email, password, nickname) {
     email: mail,
     password: String(password),
     data: { nickname: String(nickname || '').trim() || mail.split('@')[0] },
-    /* ⚠️ 必须显式带上落点（所有者报告：确认邮件把人送到 localhost:3000）：
+    /* ⚠️ 必须显式带上落点（报告：确认邮件把人送到 localhost:3000）：
        不带这个参数时，确认链接的落点由 Supabase 的 **Site URL** 决定 —— 那是个
        控制台里的配置项，一旦还停在开发地址（如 localhost:3000），**每个新用户注册完
        都会卡在「拒绝连接」**，而前端代码里看不出任何问题。

@@ -303,7 +303,7 @@ export async function addComment(songId, text, difficulty) {
   const body = String(text || '').trim();
   if (!body) throw new ApiError('评论内容不能为空。', 0, 'EMPTY');
   if (body.length > 500) throw new ApiError('评论最多 500 字。', 0, 'TOO_LONG');
-  /* 评论要固化「发表时所在的难度」（所有者 2026-10 需求）：
+  /* 评论要固化「发表时所在的难度」（2026-10 需求）：
      存下来才能让一条评论永远指向它当时评的那张谱面，而不是跟着页面当前选择变。
      ⚠️ 白名单校验放在这里（信任边界）：非 EZ/HD/IN/AT 一律存 null，
         不把调用方传进来的任意字符串写进库；库里另有一条 CHECK 约束兜底。 */

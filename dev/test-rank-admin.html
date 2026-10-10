@@ -11,16 +11,16 @@
 </head>
 <body>
 <!--
-  ============================ 夹具使用矩阵（Captain 裁定，交接以此为准） ============================
-  本页打 **8124 的 `_mocksupa-rpc.js`（加固版）**，它提供列级权限拒绝、admin_set_admin() 守卫与预置账号
+  ============================ 夹具使用矩阵（本仓约定） ============================
+  本页打 **8124 的 `dev/mocksupa-rpc.js`（加固版）**，它提供列级权限拒绝、admin_set_admin() 守卫与预置账号
   （root@example.com / root123456 管理员；user1@example.com / user123456 普通用户）。
   复现命令：
-      MOCK_PORT=8124 node _mocksupa-rpc.js          # 加固版（或 node _mocksupa-rpc.js 8124）
-      # 无头 dump：http://localhost:8000/_test-rank-admin.html  → 期望 == 64 passed, 0 failed ==
-  ⚠ 不要打 8123：那是 `_mocksupa.js`「旧策略对照组」，故意不加固（PATCH users.is_admin 会成功），
-    留给 `_probe-rank-admin.js` 的 B1 对照与 `_test-auth.html` / `_test-ui.html`（后两者必须空库干净启动）。
-  端口其他角色：8125=空库第三实例，给 `_test-rank.html` 用。
-  夹具单一 owner = 需求与验收；本文件改前先报 Captain。
+      MOCK_PORT=8124 node dev/mocksupa-rpc.js          # 加固版（或 node dev/mocksupa-rpc.js 8124）
+      # 无头 dump：http://localhost:8000/dev/test-rank-admin.html  → 期望 == 64 passed, 0 failed ==
+  ⚠ 不要打 8123：那是 `dev/mocksupa.js`「旧策略对照组」，故意不加固（PATCH users.is_admin 会成功），
+    留给 （本仓不含的安全探测脚本） 的 B1 对照与 `dev/test-auth.html` / `dev/test-ui.html`（后两者必须空库干净启动）。
+  端口其他角色：8125=空库第三实例，给 本仓没有对应的用例页 用。
+  夹具由本仓统一维护，本文件改动前请先开 Issue 说明。
   ================================================================================================
 -->
 <header>

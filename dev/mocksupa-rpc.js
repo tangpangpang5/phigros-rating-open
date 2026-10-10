@@ -1,9 +1,9 @@
-/* 开发用：Mock Supabase（加固版）——在 _mocksupa.js 的行为之上，增加「列级权限 + 提权 RPC」
- * 运行：node _mocksupa-rpc.js          → http://127.0.0.1:8124
- *        node _mocksupa-rpc.js 9001   → 指定端口
+/* 开发用：Mock Supabase（加固版）——在 dev/mocksupa.js 的行为之上，增加「列级权限 + 提权 RPC」
+ * 运行：node dev/mocksupa-rpc.js          → http://127.0.0.1:8124
+ *        node dev/mocksupa-rpc.js 9001   → 指定端口
  *
  * 为什么需要这个文件：
- *   _mocksupa.js 只能模拟「表级」RLS，无法模拟 supabase-setup.sql 里的
+ *   dev/mocksupa.js 只能模拟「表级」RLS，无法模拟 supabase-setup.sql 里的
  *   `grant update (nickname, avatar_color)` 列级权限与 admin_set_admin() 的守卫。
  *   于是这里把 4.2 节的 INV-1..INV-6 逐条实现成可断言的行为：
  *     INV-1  PATCH /rest/v1/users 带 is_admin 字段 → 非管理员一律 42501 拒绝
@@ -13,16 +13,16 @@
  *     INV-5  last admin 保护（不允许把最后一个管理员降级）
  *     INV-6  target_id 空 / 目标不存在 → 报错
  *
- * ============================ 夹具使用矩阵（Captain 裁定，交接以此为准） ============================
+ * ============================ 夹具使用矩阵（本仓约定） ============================
  * 端口角色（谁打哪个端口，不允许混用）：
- *   · 8123  `_mocksupa.js`（**旧策略对照组**）← `_probe-rank-admin.js` 的 B1、`_test-auth.html`、`_test-ui.html`
+ *   · 8123  `dev/mocksupa.js`（**旧策略对照组**）← `dev/test-auth.html`、`dev/test-ui.html`
  *                                                （后两者必须跑在**干净启动的空库 8123**，否则「profiles 初始为空」等断言必失败）
- *   · 8124  **本文件（加固版）**              ← `_test-rank-admin.html`、`_test-admin.html`（默认 ?mock 已指向 8124）
- *   · 8125  `_mocksupa.js`（空库第三实例）    ← `_test-rank.html`
- * 启动：MOCK_PORT=8124 node _mocksupa-rpc.js（或 node _mocksupa-rpc.js 8124）
+ *   · 8124  **本文件（加固版）**              ← `dev/test-rank-admin.html`（默认 ?mock 已指向 8124）
+ *   · 8125  `dev/mocksupa.js`（空库第三实例）    本仓没有对应的用例页
+ * 启动：MOCK_PORT=8124 node dev/mocksupa-rpc.js（或 node dev/mocksupa-rpc.js 8124）
  * 硬性约束：加固语义（列级权限拒绝、admin_set_admin 守卫）**只能加在本文件**；
- *           加到 8123 上会让 `_probe-rank-admin.js` 的 B1 失败（那条是用来证明漏洞存在的对照）。
- * 夹具单一 owner = 需求与验收；`_mocksupa*.js` 与 `_test-*.html` / `_test-rank.js` 改前先报 Captain。
+ *           加到 8123 上就失去「旧策略对照组」的意义了（那正是它存在的理由）。
+ * 夹具（`dev/mocksupa*.js` 与 `dev/test-*.html` / `dev/test-rank.js`）由本仓统一维护，改动前请先开 Issue 说明。
  * ================================================================================================
  *
  * 预置账号（幂等，可重复运行）：

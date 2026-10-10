@@ -211,7 +211,7 @@
         text: 'selfcheck anon probe', created_at: Date.now()
       });
       if (w.status === 201 || w.status === 200) {
-        addRow('bad', '匿名竟然能写入评论', 'RLS 没有拦住未登录写入！请立刻重跑 supabase-setup.sql，并确认没有执行过 _临时放行.sql。');
+        addRow('bad', '匿名竟然能写入评论', 'RLS 没有拦住未登录写入！请立刻重跑 supabase-setup.sql，并确认没有手工关掉过任何表的行级安全策略（RLS）。');
         await req('DELETE', '/rest/v1/comments?id=eq.' + encodeURIComponent(probeId));
         addRow('info', '已尝试清理测试数据', '如果上面那条写入成功，已尝试删除探针数据 ' + esc(probeId) + '。');
       } else {
@@ -222,7 +222,7 @@
     }
 
     /* 6. 🔒 自提权探测：谁都别想改自己的 is_admin（本次安全加固的核心）
-     * 判定口径与验收清单 §5.1 一致，两种请求各打一次：
+     * 判定口径与私有开发仓验收手册 §5.1 一致，两种请求各打一次：
      *   ① 不带令牌（匿名）PATCH 一条目标记录 {is_admin:true} → 期望 403 + code=42501
      *   ② 已登录时再带自己的令牌 PATCH 自己那行 → 期望 403 + 42501，并读回 profiles.is_admin 复核
      * 判定：读回仍为 false（或两种请求都被拒）= 通过；读回变成 true = 失败（严重，立刻尝试改回）；
@@ -268,8 +268,8 @@
           '登录用户竟然能把自己（' + esc(escSess.email || escUid) + '）的 is_admin 从 false 改成 true（' + escSelfLine + '）！\n' +
           '这是<b>严重</b>问题：任何注册用户都能变成管理员（可删任意评论/评分、读全部用户资料）。\n' +
           '请立刻在 SQL Editor 重新执行 <b>supabase-setup.sql</b>（含「收回 is_admin 列权限 + 触发器兜底 + admin_set_admin 函数」）；' +
-          '若刚执行过 _临时放行.sql，必须重跑 supabase-setup.sql 才能恢复保护。\n' +
-          '另外请把本页输出发给开发者，并按验收清单第 4.2 节用 Console 手工复验。');
+          '若刚手工关掉过行级安全策略（RLS），必须重跑 supabase-setup.sql 才能恢复保护。\n' +
+          '另外请把本页输出发给开发者，并用浏览器 Console 手工复验写入是否被拒。');
         var escFix = await req('PATCH', '/rest/v1/users?id=eq.' + encodeURIComponent(escUid), { is_admin: false }, escTok);
         if (escFix.ok || escFix.status === 204) addRow('info', '已尝试还原', '已把本次探测写进去的 is_admin 改回 false，避免留下痕迹。');
         else addRow('warn', '探测后未能还原', '请手动执行：<code>update public.users set is_admin = false where id = \'' + esc(escUid) + '\';</code>');

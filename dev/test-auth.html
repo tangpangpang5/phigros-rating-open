@@ -4,18 +4,18 @@
 <meta charset="UTF-8" />
 <title>端到端自测（Auth + 打分 + 评论）</title>
 <!--
-  ============================ 夹具使用矩阵（Captain 裁定，交接以此为准） ============================
-  本页打 **8123 的 `_mocksupa.js`（旧策略对照组）**，且**必须跑在干净启动的空库实例上**：
+  ============================ 夹具使用矩阵（本仓约定） ============================
+  本页打 **8123 的 `dev/mocksupa.js`（旧策略对照组）**，且**必须跑在干净启动的空库实例上**：
   本页断言「profiles 初始为空」「同一用户的平均分唯一（9 → 7）」「评论数为 1」，
   预置数据或复用别的用例留下的状态会让这些断言失败（实测会被污染成 7.5 / 6.5）。
   复现命令：
       # 先强制释放 8123（按端口持有者杀），确认 PID 变化后再起
-      MOCK_PORT=8123 node _mocksupa.js        # 不要加 MOCK_SEED_DATA=1
-      # 然后无头 dump：http://localhost:8000/_test-auth.html   → 期望 == 24 passed, 0 failed ==
+      MOCK_PORT=8123 node dev/mocksupa.js        # 不要加 MOCK_SEED_DATA=1
+      # 然后无头 dump：http://localhost:8000/dev/test-auth.html   → 期望 == 24 passed, 0 failed ==
   注意：`/_test/reset` **不清 authUsers**，所以「干净」= 重启进程，不是调 reset。
-  端口其他角色：8124=加固版（`_mocksupa-rpc.js`，给 `_test-admin.html`/`_test-rank-admin.html` 用）；
-               8125=空库第三实例（给 `_test-rank.html` 用）。
-  夹具单一 owner = 需求与验收；本文件改前先报 Captain。
+  端口其他角色：8124=加固版（`dev/mocksupa-rpc.js`，给 /`dev/test-rank-admin.html` 用）；
+               8125=空库第三实例（给 本仓没有对应的用例页 用）。
+  夹具由本仓统一维护，本文件改动前请先开 Issue 说明。
   ================================================================================================
 -->
 <style>

@@ -42,7 +42,7 @@ body {
   line-height: 1.55;
 }
 
-/* ---------- 构成主义几何底纹（所有者要求：把背景以构成主义的颜色丰富起来）----------
+/* ---------- 构成主义几何底纹（要求：把背景以构成主义的颜色丰富起来）----------
    为什么用 CSS 叠层而不是再画一张图：站点**已有**这套视觉语法（`.hero::before` 是红圆、
    `.hero::after` 是 34° 黑斜带），CSS 渐变能直接复用同一套角度与色值 ——
    零新增文件、零依赖、随时可删，也不必再管"新图有没有被 build-site.js 复制出去"
@@ -135,14 +135,14 @@ nav a {
   text-transform: uppercase;
   color: var(--dim);
   border: 2px solid transparent;
-  /* 导航菜单项：圆角 6px（所有者 2026-10：导航栏要圆角）。
+  /* 导航菜单项：圆角 6px（2026-10：导航栏要圆角）。
      写法就写在这一条上，与 .btn 的 6px 一致；minimal.css 那边本来就是 999px 胶囊，不动。 */
   border-radius: 6px;
   transition: none;
 }
 nav a:hover { color: var(--ink); border-color: var(--ink); }
 /* 选中态原来是「右上 / 左下切角」的构成主义造型（clip-path: polygon(...)）。
-   ⚠️ 两者不能共存：clip-path 会把圆角重新切掉 ⇒ 圆角等于没做。既然所有者要圆角，
+   ⚠️ 两者不能共存：clip-path 会把圆角重新切掉 ⇒ 圆角等于没做。既然要求圆角，
    这里就只留圆角、去掉切角（这是本轮唯一被有意放弃的视觉特征），其余（黑底、白字、2px 描边）不变。 */
 nav a.active { color: var(--paper); background: var(--ink); border-color: var(--ink); }
 
