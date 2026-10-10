@@ -189,7 +189,7 @@ node --test dev/test-rank.js                       # 13 条榜单计算纯函数
 ├── index.html          页面入口
 ├── config.example.js   后端配置模板（复制成 config.js 再填；config.js 已被 .gitignore 忽略）
 ├── data.js             只读演示模式的展示数据（无账号）
-├── 九鸟.png            页头 logo 的占位图（**请换成你自己的图**；favicon 用的是内联 SVG，不占文件）
+├── logo-placeholder.png 页头 logo 的占位图（**请换成你自己的图**；favicon 用的是内联 SVG，不占文件）
 ├── js/
 │   ├── config.js       配置读取 + 统一错误/提示条
 │   ├── songs.js        曲库加载、筛选排序、封面
