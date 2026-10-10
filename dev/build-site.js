@@ -31,7 +31,8 @@ const REQUIRED_FILES = [
   'modern.css',
   'minimal.css',
   'layout.css',
-  '九鸟.jpg',
+  /* 页头 logo 的占位图（原名 九鸟.jpg；公开仓不带原图，见根目录 README 的「版权与许可」） */
+  '九鸟.png',
   'bg.jpg',        /* 现代主题的整页背景图；漏掉它线上背景就一直是坏的 */
 ];
 
