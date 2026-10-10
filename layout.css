@@ -1,0 +1,1151 @@
+/* =========================================================
+   全局布局（最后加载，覆盖各主题的横向 header）
+   · 左侧竖排侧边栏（可折叠）
+   · 工具栏置顶（可开关）
+   · 紧凑卡片（可开关）
+   · 设置面板 + 开关样式
+   ========================================================= */
+
+/* 侧栏（固定 224px）——**方案 A**：只让侧栏本体与折叠把手做合成层滑动。
+   · `width` / `padding` / `margin` / `left` 全部**不进 transition**（它们每帧触发整页重排，
+     首页有 312 张卡片 ⇒ 掉帧）；
+   · 折叠时用 transform: translate3d() 把侧栏整体左移 160px（224→64 的差值）：布局盒宽度恒定
+     （永远是 224px），内容被 overflow-x:hidden 裁掉 ⇒ **可见宽度 64px**、右边缘精确落在 x=64，
+     与旧版逐像素一致，但整段动画零 reflow。
+   · 主内容/页脚不再跟滑（旧版 margin-left 过渡会逐帧重排）；它们直接切到折叠态的 margin-left，
+     一次性布局 —— 见下方 main/footer 段。 */
+header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 224px;
+  height: 100vh;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 6px;
+  padding: 14px 14px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border-bottom: none !important;
+  border-right: 1px solid rgba(0, 0, 0, .1);
+  box-shadow: 1px 0 10px rgba(0, 0, 0, .04);
+  /* 只过渡 transform（合成层）；旧版这里是 transition: width, padding（每帧重排） */
+  transition: transform .3s cubic-bezier(.25, .1, .25, 1);
+  will-change: transform;
+}
+/* 160px 是侧栏可见宽度 224→64 的差值；#sbToggle 与它同步 */
+body.sb-collapsed header { transform: translate3d(-160px, 0, 0); }
+
+/* 侧栏折叠后只留 64px：内部元素**不再做任何收合动画**。
+   实测结论（无头 Edge + PerformanceObserver({type:'layout-shift'})，768/800/1440 三档）：
+     · display:none / visibility:hidden  → 切换瞬间会改变侧栏可滚动内容高度 ⇒ 记录到 layout-shift；
+     · opacity 过渡                      → nav 高度是亚像素值(36.141px)，合成层记账同样记录到一次
+                                            value≈3.9e-5 px² 的 layout-shift；
+     · 什么都不做（靠侧栏自身 overflow-x:hidden 裁切）→ **0 条 layout-shift**。
+   反正侧栏被裁到 64px 之后，右侧内容本来就不可见也不可点（被裁切区域不接收点击），
+   所以“消失动画”在视觉上无收益，去掉它换来干净的 0 shift。 */
+
+/* 折叠把手：贴在侧栏右缘，垂直居中（脱离 header 流，避免被裁剪）
+   · 位置过渡同样只用 transform：expand(x) + translateY(-50%)；旧版是 transition: left。 */
+#sbToggle {
+  position: fixed;
+  left: 210px;
+  top: 50%;
+  transform: translate3d(0, -50%, 0);
+  z-index: 80;
+  width: 26px;
+  height: 48px;
+  padding: 0;
+  border-radius: 0 10px 10px 0;
+  clip-path: none !important;
+  background: var(--paper, var(--a-bg, #fff));
+  border: 1px solid rgba(0, 0, 0, .15);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .12);
+  transition: transform .3s cubic-bezier(.25, .1, .25, 1);
+  will-change: transform;
+}
+/* 折叠时把手跟着侧栏右移（同样只用 transform 的 X 分量叠加在 translateY(-50%) 上） */
+body.sb-collapsed #sbToggle { transform: translate3d(-160px, -50%, 0); }
+
+/* 侧栏顶部工具行：设置 */
+.sb-tools { display: flex; justify-content: space-between; gap: 6px; margin-bottom: 6px; }
+.sb-tools .btn { flex: 1; }
+
+.logo { justify-content: flex-start; margin-bottom: 8px; }
+.logo > div:last-child { font-size: 16px; }
+
+nav { flex-direction: column; align-items: stretch; gap: 2px; }
+nav a { display: block; text-align: left; }
+
+header .spacer { flex: 1; }
+
+#appBtn, #styleBtn { width: 100%; text-align: center; }
+#appBtn { margin-top: 8px; }
+
+#userArea { flex-direction: column; align-items: stretch; gap: 6px; margin-top: 12px; }
+.user-chip { justify-content: flex-start; }
+#userArea .btn { width: 100%; }
+
+/* 内容区与页脚：**不做位移过渡**（方案 A）。
+   旧版靠 `transition: margin-left` 让内容跟滑 —— 那会每帧重排 312 张卡片。
+   但内容要跟滑就必须等价复现旧版的两段公式：
+     展开 max(224px, calc(50% - 438px)) → 折叠 max(64px, calc(50% - 518px))
+   这两段的差值并不相同（窄屏段差 160px、18xx 以下居中段差 80px），用一个固定
+   transform 平移无法同时匹配（Captain 已核对）。所以这里改为：**主内容与页脚直接切到
+   折叠态的 margin-left（一次性布局，不逐帧）**，几何与旧版逐像素一致。
+   动画仍由侧栏 + 把手承担（见上面的 header / #sbToggle，纯 transform 合成层）。 */
+main {
+  max-width: 1100px;
+  margin-left: max(224px, calc(50% - 438px));
+  margin-right: 0;
+}
+footer { margin-left: 224px; }
+
+/* ---------- 折叠侧栏 ---------- */
+body.sb-collapsed .sb-tools { flex-direction: column; }
+body.sb-collapsed header .logo { justify-content: center; }
+/* 折叠态：内容/页脚一次性到位（与旧版公式完全一致，无过渡属性 ⇒ 不会逐帧重排） */
+body.sb-collapsed main { margin-left: max(64px, calc(50% - 518px)); }
+body.sb-collapsed footer { margin-left: 64px; }
+
+/* ---------- 置顶工具栏（滚动时吸顶） ---------- */
+body:not(.no-sticky) .toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: var(--paper, var(--a-bg, var(--bp-paper, #fff)));
+  padding: 8px;
+  margin: -8px -8px 14px;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, .08);
+}
+
+/* ---------- 紧凑卡片 ---------- */
+body.compact .grid { gap: 10px; }
+body.compact .card-cover { height: 108px; }
+body.compact .card-body { padding: 10px 12px 12px; }
+
+/* ---------- 设置面板 ---------- */
+.set-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, .4); z-index: 300; }
+.set-card {
+  position: fixed;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(400px, calc(100vw - 32px));
+  background: #fff;
+  border: 1px solid #e2e2e6;
+  border-radius: 14px;
+  padding: 16px 20px;
+  z-index: 301;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, .22);
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  color: #1d1d1f;
+  animation: set-pop .2s ease;
+}
+@keyframes set-pop { from { transform: translate(-50%, -48%); opacity: 0; } to { transform: translate(-50%, -50%); opacity: 1; } }
+.set-head { display: flex; align-items: center; justify-content: space-between; font-weight: 700; font-size: 16px; margin-bottom: 8px; }
+.set-head button { border: 0; background: transparent; font-size: 22px; cursor: pointer; color: #6e6e73; line-height: 1; }
+.set-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 12px 0; border-top: 1px solid #f0f0f2; }
+.set-row:first-of-type { border-top: 0; }
+.set-info { display: flex; flex-direction: column; }
+.set-info b { font-size: 14px; font-weight: 600; }
+.set-info span { font-size: 12px; color: #86868b; margin-top: 2px; }
+.set-tip { font-size: 12px; color: #a0a0a6; margin-top: 10px; text-align: center; }
+
+/* 分段选择（设置面板里的「风格」「外观」）：小屏也点得到，所以按钮做大一点（≥34px 高）。
+   ⚠️ 约定 1：状态色（选中/未选中）**必须用固定色**，不得使用会随主题/强调色翻转的变量
+   （`--ink` / `--dim` / `--card` / `--a-ink` / `--a-blue` / `--a-bg2` 之类）—— 同一个变量在
+   浅色/深色、红/蓝外观下会换值，选中态就会在部分组合里与未选中态撞成一样（"看不出选中"）。
+   同类错误在导航栏 `nav a.active` 上已经犯过一次，这里是第二次。
+   ⚠️ 约定 2：**不得用「深色填充 / 浅色描边」来表达选中** —— 四个外观选项里本来就有「浅·红/浅·蓝」，
+   用填充深浅暗示状态，会把「浅色被选中」读成「未选中」（用户实测报的就是这个）。
+   所以选中态改用**与选项颜色无关的标记**：右上角勾（::after '✓'）+ 2px 外圈 + 加粗；
+   四个选项**未选中时外观完全一致**（同一组 bg/border/字重）。取值全部固定，只有深浅两套，
+   由 `body.mode-dark` 决定，与红/蓝外观、与现代/简约风格无关。 */
+.set-row-block { flex-direction: column; align-items: stretch; gap: 8px; }
+.set-opts { display: flex; flex-wrap: wrap; gap: 6px; }
+.set-opt {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 62px;
+  min-height: 34px;
+  padding: 6px 16px 6px 10px;   /* 右侧留出勾的位置；选中/未选中同一套 padding ⇒ 四选项尺寸一致 */
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: #1d1d1f;
+  background: #f2f2f5;
+  border: 1px solid #d8d8de;
+  border-radius: 9px;
+  cursor: pointer;
+}
+.set-opt:hover { background: #e8e8ed; }
+/* 选中：勾 + 2px 外圈 + 加粗（三个线索都不依赖"深浅"），填充只微调一档 */
+.set-opt.is-on { color: #1d1d1f; background: #dfe3ea; border-color: #1d1d1f; box-shadow: 0 0 0 2px #1d1d1f; font-weight: 700; }
+.set-opt.is-on::after { content: '✓'; position: absolute; top: 2px; right: 5px; font-size: 11px; font-weight: 700; line-height: 1; color: #1d1d1f; }
+/* 深色底上（简约深色）用浅色描边，避免按钮糊在一起 */
+body.mode-dark .set-opt { color: #f5f5f7; background: #2c2c2e; border-color: #3a3a3c; }
+body.mode-dark .set-opt:hover { background: #3a3a3c; }
+body.mode-dark .set-opt.is-on { color: #f5f5f7; background: #4d4d57; border-color: #f5f5f7; box-shadow: 0 0 0 2px #f5f5f7; font-weight: 700; }
+body.mode-dark .set-opt.is-on::after { color: #f5f5f7; }
+/* 面板顶部那行「当前：…」：用文字说清哪一项生效（同样不引用主题变量） */
+.set-now { font-size: 12px; line-height: 1.4; color: #6e6e73; margin: 2px 0 10px; }
+body.mode-dark .set-now { color: #a1a1a6; }
+/* 高对比度/强制色模式：用系统高亮色，同样不引用主题变量 */
+@media (forced-colors: active) {
+  .set-opt.is-on { background: Highlight; color: HighlightText; border-color: Highlight; box-shadow: none; }
+  .set-opt.is-on::after { color: HighlightText; }
+}
+
+/* ---------- 自定义下拉（替代原生 <select>）----------
+   组件实现在 js/ui.js 的 createDropdown()：首页工具栏（曲包/难度/排序）与榜单页
+   （排序/最少人数/难度）共用同一套，不再三处各写一遍。
+   这里只放**结构 + 状态色**；控件本体的边框/圆角/阴影/字体交给主题文件
+   （modern.css = 粗边框 + 硬阴影；minimal.css = 圆角 + 柔和阴影），这样主题自洽。
+   ⚠️ 状态色（键盘高亮 .is-hi / 选中 .is-on）一律用**固定色**，不得使用随主题或强调色
+      翻转的变量（--ink/--card/--a-ink/--a-blue 之类）—— 同类错误在导航栏 `nav a.active`
+      与设置面板 `.set-opt` 上各犯过一次，这是第三次预防。 */
+.dd { position: relative; display: inline-block; }
+.dd-btn {
+  display: inline-flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: 100%; min-height: 40px; cursor: pointer;
+}
+.dd-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dd-caret { flex: 0 0 auto; font-size: 10px; line-height: 1; opacity: .7; transition: transform .18s ease; }
+.dd.is-open .dd-caret { transform: rotate(180deg); }
+.dd-menu {
+  position: absolute; z-index: 60; top: calc(100% + 6px); left: 0; min-width: 100%;
+  max-width: min(320px, calc(100vw - 24px)); max-height: 320px; overflow-y: auto;
+  margin: 0; padding: 4px; list-style: none;
+}
+.dd.is-flip .dd-menu { left: auto; right: 0; }
+.dd-opt {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  min-height: 36px; padding: 6px 10px; border-radius: 7px; cursor: pointer;
+  color: inherit; font-size: 13px; font-weight: 500;
+  white-space: nowrap; overflow: hidden;   /* 不换行：否则选中项多出来的勾会把文字挤到第二行、行高忽高忽低 */
+}
+.dd-opt.is-hi { background: #eceef3; }              /* 键盘/鼠标高亮（固定浅色） */
+.dd-opt.is-on { font-weight: 700; }                 /* 当前选中：加粗 + 勾（不依赖颜色） */
+.dd-opt.is-on::after { content: '✓'; flex: 0 0 auto; font-size: 12px; font-weight: 700; }
+.dd-opt.is-on.is-hi { background: #dfe3ea; }
+body.mode-dark .dd-opt.is-hi { background: #3a3a3c; }
+body.mode-dark .dd-opt.is-on.is-hi { background: #4d4d57; }
+@media (max-width: 600px) {
+  /* 触控目标：按钮与选项行高都 ≥44px（iOS HIG），且不再有原生控件 ⇒ 不会被聚焦放大 */
+  .dd-btn { min-height: 44px; }
+  .dd-opt { min-height: 44px; padding: 10px 12px; font-size: 14px; }
+  .dd-menu { max-height: 260px; }
+}
+@media (forced-colors: active) {
+  .dd-opt.is-on { background: Highlight; color: HighlightText; }
+}
+
+/* 开关（switch） */
+.switch { position: relative; display: inline-block; width: 44px; height: 26px; flex-shrink: 0; }
+.switch input { opacity: 0; width: 0; height: 0; }
+.switch .slider {
+  position: absolute; inset: 0;
+  background: #d1d1d6;
+  border-radius: 999px;
+  transition: background .2s ease;
+  cursor: pointer;
+}
+.switch .slider::before {
+  content: '';
+  position: absolute;
+  width: 20px; height: 20px;
+  left: 3px; top: 3px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .3);
+  transition: transform .2s ease;
+}
+.switch input:checked + .slider { background: #0071e3; }
+.switch input:checked + .slider::before { transform: translateX(18px); }
+
+/* ---------- 小屏：回退顶部横条（忽略折叠态） ---------- */
+@media (max-width: 880px) {
+  header {
+    position: sticky;
+    top: 0; left: auto; bottom: auto;
+    width: 100%; height: auto;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    overflow-x: auto; overflow-y: hidden;
+    border-right: none;
+    border-bottom: 1px solid rgba(0, 0, 0, .1);
+  }
+  .sb-tools { margin-bottom: 0; }
+  .logo { margin-bottom: 0; }
+  nav { flex-direction: row; align-items: center; }
+  nav a { white-space: nowrap; }
+  header .spacer { flex: 1; }
+  #appBtn, #styleBtn, #userArea { width: auto; margin-top: 0; }
+  #userArea { flex-direction: row; align-items: center; }
+  #userArea .btn { width: auto; }
+  main { margin-left: 0; }
+  footer { margin-left: 0; }
+  #sbToggle { display: none; }
+
+  /* ---------- 吸顶工具栏在窄屏必须让位给顶部横条（所有者报「吸顶没用」的根因）----------
+     本区间 header 变成 position:sticky 的顶部横条、z-index 50(modern)/60(minimal)；
+     而 .toolbar 的吸顶规则写的是 top:0 + z-index:40 ⇒ 两者在**同一块区域**重叠，
+     且 header 层级更高 ⇒ 工具栏每次吸顶都被横条完整盖住。
+     在宽屏看不出来（那时 header 是左侧固定栏，不占顶部），所以只有手机上像"没生效"。
+     这里把吸顶位置压到横条下方、层级抬到横条之上，并补齐不透明底色（否则内容会透上来）。
+     --hdr-h 由 js/ui.js 用 ResizeObserver 实测横条高度写入 <html>（不写死 px：
+     横条高度随字号/换行/安全区变化，写死会在某些机型上错位）。 */
+  body:not(.no-sticky) .toolbar {
+    /* 实测：写成 calc(var(--hdr-h) + env(safe-area-inset-top, 0px)) 时，
+       浏览器把整条 top 判为无效 ⇒ 回退到别的规则（读出来是 52px）。
+       纯 var() 版本正常得到 81px。刘海安全区因此不在这里处理 —— 若将来真机上发现
+       横条被刘海压住，正确做法是在 header 自身加 padding-top: env(safe-area-inset-top)，
+       让横条自己变高，--hdr-h 会跟着变（ResizeObserver 已经在观察它）。 */
+    top: var(--hdr-h, 52px);
+    z-index: 70;                  /* > minimal 的 header:60 / modern 的 header:50 */
+    background: var(--paper, var(--a-bg, var(--bp-paper, #fff)));
+    box-shadow: 0 1px 0 rgba(0, 0, 0, .08);
+    padding: 8px;
+    margin: -8px -8px 14px;
+  }
+
+  body.sb-collapsed header { width: 100%; transform: none; padding: 8px 12px; }
+  /* 侧栏在这个区间是顶部横条：#sbToggle 已 display:none，折叠态不需要任何位移 */
+  body.sb-collapsed .sb-tools { flex-direction: row; }
+  body.sb-collapsed header .logo > div:last-child,
+  body.sb-collapsed header nav,
+  body.sb-collapsed header #appBtn,
+  body.sb-collapsed header #styleBtn,
+  body.sb-collapsed header #userArea { display: flex; }
+  body.sb-collapsed main, body.sb-collapsed footer { margin-left: 0; }
+
+  /* 窄屏这条横条是 flex-direction:row ⇒ 光把设置按钮的 DOM 排到头像之后还不够，
+     视觉上仍落在头像前面。所有者要的是「放到头像下面」这个位置关系，
+     所以在 ≤880px 用 order 把它排到 #userArea 之后：DOM 顺序不动
+     （桌面侧栏正是靠 DOM 顺序成立的），只改这一档的视觉顺序。
+     桌面不在此媒体查询内，行为/顺序完全不变。 */
+  .sb-tools { order: 9; }
+}
+
+/* =========================================================
+   移动端细化（Prompt 5）
+   ========================================================= */
+/* ⚠️ 这里必须是 clip，不能是 hidden（所有者报「吸顶按钮没用」的真因之一）：
+   `overflow-x: hidden` 会让 html/body 变成**滚动容器**，而滚动容器内的
+   `position: sticky` 是相对那个容器定位的 ⇒ .toolbar 的吸顶彻底失效
+   （实测：向下滚 1200px，工具栏停在 y=-688，本该粘在横条下缘）。
+   `overflow-x: clip` 照样裁掉横向溢出，但**不建立滚动容器**，sticky 恢复正常。
+   老浏览器不认 clip：先写 hidden 兜底，再由 @supports 覆盖。 */
+html, body { overflow-x: hidden; }
+@supports (overflow-x: clip) {
+  html, body { overflow-x: clip; }
+}
+
+/* 卡片内的文字元素全是 white-space: nowrap，而 flex 子项默认 min-width:auto
+   ⇒ 它们的「最小内容宽度」会把 1fr 网格列撑到 ~690px（实测 412px 视口下卡片宽 691px），
+   表现为：卡片贴边、右侧 2px 黑边框与 hero 的 7px 投影被视口裁掉。
+   把这几类元素的最小宽度放开，让省略号(overflow:hidden + text-overflow:ellipsis)生效。
+   —— 必须放在这里（layout.css 最后加载）才能压过 modern.css / minimal.css 的同名规则。 */
+.card-title, .card-cat, .card-meta, .card-meta.dim,
+.card-title-row, .card-badges, .card-footer, .card-body { min-width: 0; }
+.card { min-width: 0; overflow: hidden; }   /* 兜底：卡片自己也不许超出网格列 */
+
+@media (max-width: 768px) {
+  /* 吸顶工具栏下移，避开顶部横条，避免遮挡内容。
+     ⚠️ 这里原来是写死的 52px，会把 ≤880px 那条 calc(var(--hdr-h)) 覆盖掉
+     （两条选择器特异性相同、这条更靠后）—— 于是计算值永远是 52px。
+     现在统一读同一个变量：横条实测 81px（390px 宽、登录态），52px 根本不够，会被横条压住。 */
+  body:not(.no-sticky) .toolbar { top: var(--hdr-h, 52px); }
+  main { padding: 18px 12px 64px; }
+  .hero { padding: 26px 18px; margin-bottom: 18px; }
+  .hero h1 { font-size: 30px; }
+  .hero p { font-size: 14px; margin-bottom: 16px; }
+  .hero-stats { gap: 22px; }
+  .stat b { font-size: 24px; }
+  /* 卡片：窄屏两列自适应，很窄时单列（minmax(0,1fr) 防止内容把列撑宽） */
+  .grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+  .card-title { font-size: 14px; }
+  /* 详情页：封面占满宽度，避免横向溢出 */
+  .detail-cover { width: 100%; height: auto; aspect-ratio: 1 / 1; }
+  .detail-head { gap: 16px; }
+  .detail-info h1 { font-size: 24px; }
+  .detail-cols { gap: 14px; }
+  .col { padding: 16px; }
+  .profile-head { flex-wrap: wrap; gap: 12px; }
+  .profile-stats { margin-left: 0; }
+  .profile-sections { gap: 14px; }
+}
+
+@media (max-width: 430px) {
+  /* 单列：显式 minmax(0,1fr)，否则列宽仍可能被卡片内容的 min-content 撑大 */
+  .grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ---------------------------------------------------------
+   窄屏顶部横条收窄（≤600px）
+   背景：header 是 flex 且 nowrap，原先在 360~430px 下内容宽约 623px（实测 360px 下
+   scrollWidth=623）⇒ 导航「榜单」与右侧「登录/注册」被推出视口（此前靠 overflow-x:auto
+   横向滚动遮盖问题）。这里把非必要元素收起，让整条 header 真正放得下。
+   --------------------------------------------------------- */
+@media (max-width: 600px) {
+  header { overflow-x: visible; gap: 5px; padding: 8px 8px; }
+  .logo { gap: 6px; margin-bottom: 8px; }
+  .logo > div:last-child { display: none; }   /* 只留图形 logo，省 ~148px */
+  /* 设置入口**必须保持可见**：全站只有这一个 #settingsBtn（在 .sb-tools 里），
+     隐藏它 = 手机上再也打不开设置面板（t15 曾犯过这个错，见 t19 修复）。
+     这里改为「不隐藏 .sb-tools，但把里面的按钮收窄」，并额外把风格/外观开关放进设置面板
+     （js/ui.js 的 openSettings），这样窄屏既腾出空间、能力也不丢。 */
+  .sb-tools { display: flex; flex: 0 0 auto; gap: 0; margin-bottom: 0; order: 9; }
+  /* ⚠️ order: 9 必须在这条（≤600px）里也写一遍：它在 ≤880px 那条里已经写过，
+     但这里重新声明了 .sb-tools 的其它属性，而两条媒体查询都可能命中 —— 少写这一份时
+     设置按钮会被排到头像**前面**（所有者要的是后面），实测 y=21/x=379 与预期不符。
+     这是「同一个选择器分散在多个媒体查询里」的经典坑。 */
+  .sb-tools .btn { position: relative; width: 28px; min-width: 28px; padding-left: 0; padding-right: 0; text-align: center; font-size: 15px; line-height: 1; }
+  /* 触控目标 ≥44×44（iOS HIG）：视觉尺寸一个像素都不动，只多铺一层**完全透明**的 ::after
+     覆盖层（约定框 = 按钮的 padding box，所以 inset -10px ⇒ 28+2×10=48 宽、≥44 高），
+     布局盒不变 ⇒ 顶栏预算不变、不引入溢出。 */
+  .sb-tools .btn::after { content: ''; position: absolute; inset: -10px; }
+  /* 现代主题的 .btn 自带 `clip-path`（切左上/右下两个 6px 角）——**clip-path 会连子元素一起裁**，
+     把那层透明命中区也裁掉了（实测：命中区死活只有 28×29）。这里把裁切区域改写成
+     「外扩 14px 的方框 + 原来那两个切角改成 evenodd 挖洞」：画出来的像素与原来一致
+     （边框盒外本来就不画任何东西），但 ::after 的命中区不再被裁。
+     只在**现代**主题生效：minimal.css 的 .btn 没有 clip-path，硬套切角会把它圆角切掉。 */
+  html:has(#css-modern:not([disabled])) .sb-tools .btn {
+    clip-path: path(evenodd, "M-14 -14 H42 V43 H-14 Z M0 0 L6 0 L0 6 Z M28 29 L22 29 L28 23 Z");
+  }
+  /* 顶部按钮统一收窄，避免「设置按钮回归」后在 380–430px 挤出横向溢出 */
+  #appBtn, #styleBtn { width: auto; flex: 0 0 auto; padding-left: 7px; padding-right: 7px; }
+  #userArea { flex-direction: row; align-items: center; gap: 4px; margin-top: 0; }
+  #userArea .btn { width: auto; padding-left: 8px; padding-right: 8px; }
+  nav { gap: 2px; }
+  nav a { padding-left: 6px; padding-right: 6px; }
+}
+
+/* ≤380px（含 360px 老机型）：再省一点，保证不出现横向滚动。
+   注意：**不再隐藏 #styleBtn 当成“有别的入口”**（设置面板里现在有了风格开关，
+   所以隐藏是可接受的）；但设置按钮本身保持可见。 */
+@media (max-width: 380px) {
+  /* 连图形 logo 也收起（品牌在 title 与首页 hero 里都有），把位置让给设置按钮与导航 */
+  .logo { display: none; }
+  #styleBtn { display: none; }                /* 风格切换改从设置面板进（面板里有「风格」段） */
+  nav a { padding-left: 5px; padding-right: 5px; }
+  #userArea .btn { padding-left: 7px; padding-right: 7px; }
+}
+
+@media (max-width: 600px) {
+  /* 弹窗全屏：登录/注册、设置面板 */
+  .modal-card, .set-card {
+    top: 0; left: 0;
+    transform: none;
+    width: 100vw; max-width: 100vw;
+    /* ⚠️ 必须用 100dvh（不能只用 100vh）：手机上 100vh 是「浏览器工具栏收起时」的最大视口高度，
+       而工具栏是**覆盖**在页面下缘的 —— 于是面板最后一段（实测正好是「实验室 / 切换过渡动画」
+       那一行）被浏览器自己的底栏压住看不见，用户看到的就是「被裁掉」。
+       dvh 跟随工具栏动态收缩，面板内容完整落在可见区内；100vh 在前作老浏览器兜底。 */
+    height: 100vh;
+    height: 100dvh;
+    border-radius: 0;
+    overflow-y: auto;
+    animation: none;
+  }
+  /* 手机上纵向很挤（360×640 级别）：把面板自身留白与行距收紧一档，
+     让「实验室」分组尽量挤进首屏 —— 只动间距，不改任何控件尺寸/文案/顺序。 */
+  .set-card { padding: 14px 16px; }
+  .set-row { padding: 10px 0; }
+  .set-group { margin: 10px 0 2px; padding-top: 10px; }
+  /* 手机上长英文串（邮箱/长用户名/曲名）不许把面板或卡片撑破 */
+  /* 只防「超长真的放不下」的极端情况，不主动拆词：
+     anywhere 会让「<示例邮箱>」这种本来能整行显示的串也被拆开。 */
+  .u-name, .set-now, .set-info b, .set-info span, .rank-title, .rank-meta { overflow-wrap: break-word; }
+  .search-box { min-width: 100%; }
+  .select { flex: 1 1 auto; min-width: 0; }
+  .toolbar { gap: 6px; }
+  /* iOS Safari：`<input> / <select> / <textarea>` 的 font-size **小于 16px** 时，
+     聚焦会强制把整个页面放大（表现为「点一下跳一下」，且不会自己缩回）。
+     ≤600px 把这些控件的字号统一抬到 16px（= iOS 的自动缩放阈值）。
+     选择器与主题文件里的 .search-box input / .select / .comment-box textarea / .field input
+     同特异性，靠 layout.css 最后加载胜出；输入框之外的元素一个字都没动。
+     桌面端不在这个媒体查询里，字号/观感完全不变（实测 1440px 前后逐字段一致）。
+     附注：`.comment-box textarea` 只在登录态渲染（js/ui.js），但选择器只看祖先类名，与登录态无关。 */
+  .search-box input, .comment-box textarea, .field input, .select,
+  input, select, textarea { font-size: 16px; }
+  .comment-main, .need-login { padding: 12px; }
+}
+
+/* =========================================================
+   榜单页 / 管理后台（js/rank.js、js/admin.js）
+   · 只用新增的 .rank-* / .admin-* 类名，不覆盖任何既有规则
+   · 颜色走两套主题的变量链，深浅与红蓝外观都自适应
+   ========================================================= */
+.rank-page, .admin-page {
+  --rk-ink: var(--ink, var(--a-ink, #1d1d1f));
+  --rk-dim: var(--dim, var(--a-gray, #6e6e73));
+  --rk-faint: var(--faint, var(--a-gray3, #86868b));
+  --rk-line: var(--ink, var(--a-bg2, #e3e3e8));
+  --rk-panel: var(--card, var(--a-panel, #fff));
+  --rk-bg: var(--paper, var(--a-bg2, #f2f2f6));
+  --rk-accent: var(--red, var(--a-blue, #0071e3));
+}
+
+/* 同一套令牌提升到 body —— 接手批次新增的反馈弹窗挂在 document.body 上、
+   首页 hero 胶囊在 main 里，两者都不在 .rank-page/.admin-page 之内，
+   若不提升则 var(--rk-*) 在这些位置**未定义**，颜色整片失效。
+   值完全照抄上面并保留同样的兜底链，故 rank/admin 观感不变
+   （那两处是**元素上的直接声明**，优先于继承值）。
+
+   ⚠️ 必须声明在 `body` 上，**不能放在 `:root`**（我在第一版犯过这个错）：
+   CSS 自定义属性是在「声明它的那个元素」上完成 var() 代换的。`:root` 就是 `html`，
+   而深浅/红蓝外观是 `body.mode-dark` / `body.accent-blue` 在 **body** 上覆盖
+   --ink/--card/--paper/--red 等令牌 —— html 上的那份会被**冻死成浅色**。
+   实测后果：默认「现代·浅·红」下 .hero-ver 填充与 .hero 背景同为 #FCF6E9（同色不可见），
+   且切到深色时徽标不跟随。声明在 body 上才与外观 class 同层，才能真正跟随四种外观。 */
+body {
+  --rk-ink: var(--ink, var(--a-ink, #1d1d1f));
+  --rk-dim: var(--dim, var(--a-gray, #6e6e73));
+  --rk-faint: var(--faint, var(--a-gray3, #86868b));
+  --rk-line: var(--ink, var(--a-bg2, #e3e3e8));
+  --rk-panel: var(--card, var(--a-panel, #fff));
+  --rk-bg: var(--paper, var(--a-bg2, #f2f2f6));
+  --rk-accent: var(--red, var(--a-blue, #0071e3));
+}
+
+.rank-head, .admin-head { margin-bottom: 14px; }
+.rank-head h1, .admin-head h1 { margin: 2px 0 6px; font-size: 26px; }
+.rank-sub, .admin-sub { font-size: 13px; color: var(--rk-dim); }
+.admin-sub { margin-top: 2px; }
+.rank-readonly { margin-bottom: 14px; }
+.rank-count-tip { margin-left: auto; align-self: center; font-size: 13px; color: var(--rk-dim); }
+
+/* ---------- 评论标题旁的难度筛选（全部 / EZ / HD / IN / AT）----------
+   所有者 2026-10 要求。与谱面区的 .diff-tab 无关：那条选"看哪张谱面"（影响评分），
+   这里只筛"评论列表显示哪几条"。
+   ⚠️ 选中态一律用**固定色**，不得引用会随主题/外观翻转的令牌
+   （--ink/--card/--a-ink/--a-blue 之类）—— 同类错误本项目已犯过三次（nav a.active、
+   .set-opt、自定义下拉），这里按同一约定预防。 */
+.cmt-diff { display: inline-flex; gap: 4px; margin-left: 10px; vertical-align: middle; }
+.cmt-diff-btn {
+  padding: 2px 9px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  /* 未选中：与 h2 同色系但更淡，避免抢标题 */
+  color: #6e6e73;
+  background: transparent;
+  border: 1px solid #d8d8de;
+  border-radius: 999px;
+  cursor: pointer;
+  line-height: 1.5;
+}
+.cmt-diff-btn:hover { background: #f2f2f5; }
+.cmt-diff-btn.is-on { color: #fff; background: #1d1d1f; border-color: #1d1d1f; font-weight: 700; }
+body.mode-dark .cmt-diff-btn { color: #a1a1a6; border-color: #3a3a3c; }
+body.mode-dark .cmt-diff-btn:hover { background: #2c2c2e; }
+body.mode-dark .cmt-diff-btn.is-on { color: #1d1d1f; background: #f5f5f7; border-color: #f5f5f7; }
+@media (forced-colors: active) {
+  .cmt-diff-btn.is-on { background: Highlight; color: HighlightText; border-color: Highlight; }
+}
+/* 触控下限：只在窄屏放大命中区（≥40px 高），桌面观感不变 */
+@media (max-width: 600px) {
+  .cmt-diff { display: flex; flex-wrap: wrap; margin: 8px 0 0; }
+  .cmt-diff-btn { min-height: 36px; padding: 6px 12px; font-size: 13px; }
+}
+
+/* ---------- 榜单卡片（用户 2026-10 裁定改版）----------
+   旧版是「一行一张窄条 + 48px 小曲绘」，看起来就是一张小图贴在那里；现在改成**卡片**：
+   大曲绘在卡片顶部（与首页曲库卡同一视觉语言）+ 左上角大号排名数字（1、2、3、4……）。
+   ⚠️ 列宽**必须带上限**（minmax(190px, 260px) 而不是 minmax(190px, 1fr)）：
+      用 1fr 时「两首曲子的榜单」会被 auto-fit 拉成 2 列 × 519px，卡片高达 658px
+      —— 一屏只看到一张半，比旧版还浪费版面（实测原始数据见 _check-round.log）。
+      带上限后列数随可用宽度增长、每张卡片尺寸恒定，观感与首页曲库卡一致。
+      `justify-content: start` 让不满一行的卡片靠左排，不被强行拉开。 */
+.rank-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 260px));
+  justify-content: start;
+  gap: 14px;
+}
+.rank-row {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--rk-panel);
+  border: 1.5px solid var(--rk-line);
+  border-radius: 12px;
+}
+.rank-cover {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  border-radius: 0;
+  background: var(--rk-bg);
+}
+.rank-cover .cover-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* 排名数字：压在大曲绘上，所以**必须用固定色**（不能引用随主题/外观翻转的令牌，
+   否则浅色外观下白字压浅色曲绘会看不见 —— 同类错误本项目犯过三次）。
+   深色圆角底 + 白字，保证在任何一张曲绘上都读得出来。 */
+.rank-no {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  height: 34px;
+  padding: 0 8px;
+  border-radius: 9px;
+  background: rgba(12, 12, 16, .74);
+  color: #fff;
+  font-weight: 800;
+  font-size: 18px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.rank-main { display: flex; flex-direction: column; gap: 3px; padding: 10px 12px 4px; min-width: 0; }
+.rank-title { font-weight: 700; font-size: 15px; color: var(--rk-ink); text-decoration: none; }
+.rank-title:hover { color: var(--rk-accent); }
+.rank-meta {
+  font-size: 12px; color: var(--rk-dim);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* 难度与分数并排一行：难度靠左、分数靠右（auto 边距把两者推开） */
+.rank-diff {
+  margin: 0 12px;
+  padding: 8px 0 10px;
+  border-top: 1px solid var(--rk-line);
+  font-size: 12px; color: var(--rk-dim);
+}
+.rank-score {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 12px;
+  padding: 0 0 12px;
+}
+.rank-avg { margin-left: auto; font-weight: 800; font-size: 20px; color: var(--rk-ink); font-variant-numeric: tabular-nums; }
+.rank-count { font-size: 12px; color: var(--rk-faint); }
+.rank-count::after { content: ' 人'; }
+
+.admin-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; }
+@media (max-width: 900px) { .admin-cols { grid-template-columns: 1fr; } }
+.admin-col {
+  padding: 14px;
+  background: var(--rk-panel);
+  border: 1.5px solid var(--rk-line);
+  border-radius: 12px;
+}
+.admin-col h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 16px; }
+.admin-filters { display: flex; gap: 8px; margin-bottom: 10px; }
+.admin-filters input {
+  flex: 1 1 auto; min-width: 0;
+  padding: 6px 10px;
+  font-family: inherit; font-size: 13px;
+  color: var(--rk-ink);
+  background: var(--rk-panel);
+  border: 1.5px solid var(--rk-line);
+  border-radius: 8px;
+}
+.admin-comment-row { padding: 9px 0; border-top: 1px dashed var(--rk-line); }
+.admin-comment-row:first-child { border-top: none; }
+.admin-comment-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.admin-comment-song { font-weight: 700; font-size: 13px; color: var(--rk-ink); text-decoration: none; }
+.admin-comment-user { font-size: 12px; color: var(--rk-dim); }
+.admin-comment-time { font-size: 11px; color: var(--rk-faint); }
+/* 同 .admin-user-mail：break-all 会逐字符拆行，换成只在放不下时才断的 anywhere。
+   admin-comment-wrap 已经是 pre-wrap + anywhere，这个 span 只需继承即可。 */
+.admin-comment-text { font-size: 13px; color: var(--rk-ink); overflow-wrap: anywhere; }
+.admin-comment-del {
+  margin-left: auto;
+  padding: 3px 10px;
+  font-family: inherit; font-size: 12px;
+  color: var(--rk-ink);
+  background: transparent;
+  border: 1.5px solid var(--rk-line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.admin-comment-del:hover { color: var(--rk-accent); border-color: var(--rk-accent); }
+
+.admin-user-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 0;
+  border-top: 1px dashed var(--rk-line);
+}
+.admin-user-row:first-child { border-top: none; }
+.admin-user-main { flex: 1 1 auto; min-width: 0; }
+.admin-user-name { font-weight: 700; font-size: 14px; color: var(--rk-ink); }
+.admin-user-me { font-weight: 400; font-size: 12px; color: var(--rk-faint); }
+/* ⚠️ 这里原来写的是 word-break: break-all —— 那会在**任何字符之间**断行，于是
+   「<示例邮箱>」被逐字符拆成 6 行（所有者 2026-10 截图实测）。
+   break-all 的本意是「防止超长串溢出」，但同样的目的用 overflow-wrap: anywhere 就能达到，
+   而后者只在**放不下时**才断，且会优先找断点（@ . - _ 这些）⇒ 邮箱正常显示成一两行。
+   同类错误全书只此一处（.admin-user-mail）。 */
+.admin-user-mail { font-size: 12px; color: var(--rk-dim); overflow-wrap: anywhere; }
+
+/* ---------- 窄屏：用户行保持**单行**，邮箱超长时省略号（悬停看全）----------
+   所有者两次截图报的是"邮箱被拆成一列单字"。根因是宽度，不是断行规则：
+     行内固定占用 = 头像 30 + 统计 79 + 身份标签 54 + 管理按钮 82 = **245px**
+     398px 视口内容宽 344 ⇒ 邮箱只剩 59px；360px 时只剩 21px（就是一列单字）。
+   2026-10 第三轮先试过"让整行换行、邮箱独占一行"——可读但行高从 59px 涨到 129px，
+   所有者裁定**不要那么高**，改为：单行 + 省略号 + `title` 悬停看全（title 由 js/admin.js 写）。
+   ⇒ 阈值取 600px（与全站其它窄屏规则一致）。这一档只改用户行，桌面几何一个字没动。 */
+@media (max-width: 600px) {
+  .admin-user-row { flex-wrap: wrap; padding: 8px 0; row-gap: 6px; }
+  /* min-width: 0 是省略号生效的**前提**：flex 子项默认 min-width:auto，
+     会按内容的最小宽度撑开，overflow:hidden + text-overflow:ellipsis 就永远不会触发。 */
+  .admin-user-main { min-width: 0; flex: 1 1 auto; }
+  .admin-user-mail { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .admin-user-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* ⚠️ 这三个必须**整体换到下一行**，不是"挤一挤"。
+     实测 360px 视口下这一行是 306px，而光固定项就要：统计 151 + 身份 54 + 按钮 82 = 287px
+     （再加头像 28 + 间距 ⇒ 超出），留给昵称/邮箱的是 **0px** —— 我第一版把 flex-wrap 去掉后
+     邮箱直接被压成 0 宽、字全没了（比原来的"一列单字"更糟，实测截图可见）。
+     所以宁可换行：第一行只放「头像 + 昵称/邮箱（单行省略号）」，第二行放统计与两个操作。
+     这样邮箱有真实宽度、行高也远低于"每行一个字符"那种。 */
+  .admin-user-stats { order: 5; margin-left: 38px; font-size: 11px; white-space: nowrap; }
+  .admin-user-role { order: 6; margin-left: auto; padding: 2px 7px; font-size: 11px; white-space: nowrap; }
+  .admin-toggle-admin { order: 7; white-space: nowrap; }
+  .admin-user-me { white-space: nowrap; }
+}
+.admin-user-stats { flex: 0 0 auto; font-size: 12px; color: var(--rk-faint); }
+.admin-user-role {
+  flex: 0 0 auto;
+  padding: 2px 9px;
+  font-size: 12px;
+  color: var(--rk-dim);
+  background: var(--rk-bg);
+  border-radius: 999px;
+}
+.admin-user-role.is-admin { color: #fff; background: var(--rk-accent); }
+.admin-toggle-admin {
+  flex: 0 0 auto;
+  padding: 3px 10px;
+  font-family: inherit; font-size: 12px;
+  color: var(--rk-ink);
+  background: transparent;
+  border: 1.5px solid var(--rk-line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.admin-toggle-admin:hover:not([disabled]) { color: var(--rk-accent); border-color: var(--rk-accent); }
+.admin-toggle-admin[disabled] { opacity: .45; cursor: default; }
+.admin-note { margin-top: 16px; font-size: 12px; line-height: 1.9; color: var(--rk-faint); }
+.admin-note code { background: var(--rk-bg); padding: 1px 5px; border-radius: 5px; }
+
+/* =========================================================
+ * 接手批次新增：① 首页曲库版本胶囊 ② 反馈入口与弹窗 ③ 后台反馈列表
+ * 配色统一用既有的 --rk-* 令牌（定义在 .rank-page/.admin-page 作用域，
+ * 见本文件上方），使三种风格/四种外观自动跟随，不必在 modern/minimal 里各写一遍。
+ * ========================================================= */
+
+/* ---------- ① hero 里的两个胶囊（含「曲库数据版本」） ---------- */
+.hero-badges { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+/* 注意：窄屏**不截断**（不加 text-overflow/line-clamp），按验收要求换行显示全文。
+   overflow-wrap:anywhere 兜住极端窄屏下超长串，避免产生横向溢出。 */
+.hero-ver {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  color: var(--rk-ink);
+  background: var(--rk-panel);
+  border: 1.5px solid var(--rk-line);
+  border-radius: 999px;
+}
+
+/* 站点版本胶囊（所有者要求把版本号标在主页）。与 .hero-ver 同族但更低调。 */
+.hero-site {
+  font: 600 12px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: .02em;
+  opacity: .72;
+}
+
+/* ---------- ② 页头「反馈」入口 ---------- */
+/* 自定义下拉/按钮体系里没有现成的文字按钮样式，这里按 nav 的字号与间距对齐；
+   .nav-ico 是纯装饰字符，加 aria-hidden（见 js/ui.js 的导航标记）。 */
+.nav-feedback {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 4px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  color: inherit;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.nav-feedback:hover { color: var(--rk-accent); }
+.nav-ico { font-size: 13px; line-height: 1; }
+
+/* ---------- ② 反馈弹窗（复用 .set-backdrop / .set-card 视觉） ---------- */
+.fb-card { max-height: 86vh; overflow-y: auto; }
+.fb-card .dd-slot { margin-bottom: 10px; }
+/* 与「发表评论」的输入框（.comment-box textarea）保持同一套观感；
+   窄屏 16px 字号由本文件 @media (max-width:600px) 里的 `textarea` 统一兜底。 */
+.fb-card textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.6;
+  resize: vertical;
+  color: var(--rk-ink);
+  background: var(--rk-panel);
+  border: 1.5px solid var(--rk-line);
+  border-radius: 10px;
+}
+.fb-counter { margin: 6px 0 10px; font-size: 12px; text-align: right; color: var(--rk-faint); }
+.fb-counter.is-short { color: var(--rk-accent); }
+.fb-list { max-height: 38vh; overflow-y: auto; }
+.fb-item { padding: 9px 0; border-top: 1px dashed var(--rk-line); }
+.fb-item:first-child { border-top: 0; }
+.fb-item.is-handled { opacity: .72; }
+.fb-item-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; font-size: 12px; color: var(--rk-faint); }
+.fb-cat {
+  flex: 0 0 auto;
+  padding: 1px 8px;
+  color: var(--rk-accent);
+  background: var(--rk-bg);
+  border-radius: 999px;
+}
+.fb-state { margin-left: auto; flex: 0 0 auto; }
+.fb-body { font-size: 13px; line-height: 1.7; color: var(--rk-ink); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* ---------- ③ 后台反馈列表 ---------- */
+/* 「只看未处理」筛选按钮：与 .admin-filters input 同高、同边框语言 */
+.admin-fb-filter {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  font-family: inherit; font-size: 13px;
+  color: var(--rk-ink);
+  background: var(--rk-panel);
+  border: 1.5px solid var(--rk-line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.admin-fb-filter.is-on { color: #fff; background: var(--rk-accent); border-color: var(--rk-accent); }
+.admin-feedback-list { max-height: 46vh; overflow-y: auto; }
+.admin-fb-row { padding: 9px 0; border-top: 1px dashed var(--rk-line); }
+.admin-fb-row:first-child { border-top: 0; }
+.admin-fb-row.is-handled { opacity: .7; }
+.admin-fb-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; font-size: 12px; color: var(--rk-faint); }
+.admin-fb-cat { flex: 0 0 auto; padding: 1px 8px; color: var(--rk-accent); background: var(--rk-bg); border-radius: 999px; }
+.admin-fb-user { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-fb-state { margin-left: auto; flex: 0 0 auto; }
+.admin-fb-toggle {
+  flex: 0 0 auto;
+  padding: 3px 10px;
+  font-family: inherit; font-size: 12px;
+  color: var(--rk-ink);
+  background: transparent;
+  border: 1.5px solid var(--rk-line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.admin-fb-toggle:hover:not([disabled]) { color: var(--rk-accent); border-color: var(--rk-accent); }
+.admin-fb-toggle[disabled] { opacity: .45; cursor: default; }
+.admin-fb-body { font-size: 13px; line-height: 1.7; color: var(--rk-ink); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* ---------- 窄屏：反馈弹窗与列表的尺寸回退 ---------- */
+@media (max-width: 600px) {
+  .nav-feedback { padding: 2px 0; }
+  .fb-card { max-height: 100vh; }
+  .fb-list, .admin-feedback-list { max-height: none; }
+  .admin-fb-head, .fb-item-head { flex-wrap: wrap; }
+  .admin-fb-state, .fb-state { margin-left: 0; }
+}
+
+/* =========================================================
+ * 风格 / 外观切换的全屏过渡遮罩（Phigros 加载页语言）
+ *
+ * 骨架**静态**写在 index.html 的 <body> 里（见那里的注释：不能放 #main，路由会销毁它）；
+ * 显隐 / 淡入淡出 / 取图 / 「新主题已应用」的判定全部在 js/ui.js 的 trlRun() 一段。
+ *
+ * z-index = 302 ⇒ 盖住 .set-card(301) > .toast(200) > .modal-card(101)
+ *                        > #sbToggle(80) > header(60/50) > .toolbar(40)。
+ * 本层是 position:fixed + inset:0 + overflow:hidden ⇒ **不参与文档滚动尺寸**，
+ * 不会给七档宽度引入横向溢出。
+ * ========================================================= */
+.trl {
+  position: fixed;
+  inset: 0;
+  z-index: 302;
+  overflow: hidden;
+  opacity: 0;
+  /* ⚠️ !important 是必要的：minimal.css 在 prefers-reduced-motion 下有
+     `* { transition: none !important }`，会把本层自己的淡化一并掐掉（那一来遮罩就是"硬闪"，
+     比淡入淡出更刺激前庭）。本层唯一要做的事就是淡，所以用类选择器把优先级抬到 `*` 之上。 */
+  transition: opacity 250ms linear !important;
+  will-change: opacity;
+  /* 遮罩铺满整个视口 ⇒ 它就是所有滚轮/触摸的命中目标。
+     明确告诉浏览器"这一层不吃滚动"，避免主线程被整页重算占住时，
+     合成器还把滚轮增量算到后面的文档上（见 js/ui.js 里 trlUnlockScroll 的注释）。 */
+  touch-action: none;
+  overscroll-behavior: none;
+}
+.trl[hidden] { display: none; }
+
+/* 曲绘整层：铺满 + 模糊（原版实测 σ ≈ 屏宽 1.1%–2.2%，第一版取 clamp(6px,1.8vw,34px)）
+   + scale(1.1) 补偿 blur 造成的边缘透明。
+   ⚠️ 2026-10 所有者两次下调：先「20-30% 就行」→ 34px 降到 7.2px（0.5vw），
+   再「再淡一点」→ 现在 clamp(2px, 0.18vw, 5px)（1440 宽 ≈ 2.6px，约原版的 8%）。
+   保留一点点糊是为了兑现「背景是虚化的曲绘」而不是一张清晰的曲绘
+   （那会跟页面里的卡片曲绘打架、也让右下角方块的可读性变差）。
+   注：这个值现在已经**低于**从原版量测出的区间 —— 是所有者按观感选的，不是量测结论。 */
+.trl-bg {
+  position: absolute;
+  inset: 0;
+  background-color: #000;
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+  transform: scale(1.1);
+  filter: blur(clamp(2px, 0.18vw, 5px));
+}
+/* 压暗 rgba(0,0,0,.5)：兑现"盖满、看不到后面"（**产品决策**，原版加载页没有这一层，如实标注） */
+.trl-dim { position: absolute; inset: 0; background: rgba(0, 0, 0, .5); }
+
+/* 主题探针：0×0、不可见、不吃事件，只用来读 computed style。
+   ⚠️ 这里**故意不写 border / border-radius** —— 那两个值必须原样来自主题样式表，
+      判据才有意义（现代 .card = 2px 实线 + 直角；简约 .card = 0 边框 + 22px 圆角）。 */
+.trl-probe {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* ---------- 右下角「加载方块」 —— 纯图形，方块内没有任何文字 ----------
+   取值来源：用户提供的原版截图（1440×1080）逐像素量测，报告见
+   `_验收截图-切风格/loading-原版-量测.json` 与 `loading-原版-徽标剖面.json`：
+     · 方块 x 1247–1350、y 982–1025 ⇒ 139×44px ｜ 右距 89px（6.18% 屏宽）｜ 下距 54px（5.00% 屏高）
+     · 方块底色 rgb(93,93,93) = #5D5D5D；左缘有一道亮扫描带（列均值从 42 升到 75 的过渡）
+     · 按屏宽/屏高换算：宽 9.65vw、高 4.07vh ⇒ 这里用同比例（不同分辨率下等比缩放）
+   ⚠️ 几何必须按**单个横轴**用 vw（宽 9.65vw + 右距 6.18vw），不能宽用 vw、右距用 %：
+     竖屏手机上 `right:6.18%` 只有 22px，方块几乎贴死屏幕右缘（实测过）。
+   ⚠️ 这个元素同时是「跳过」按钮（整屏点击 / Esc / 点它 都在 150ms 内结束动画）。
+     它**不保证 44px 触控高度**（640px 高的手机上只有 26px）—— 因为跳过的主入口是
+     整屏点击与 Esc，这个方块只是"顺手能点"，为它把方块撑成 35×44 反而与原版不像。
+     这是本轮明确的取舍，已写进回复；若要求"方块本身也必须 ≥44px"，改 height 加 max() 即可。 */
+.trl-badge {
+  --trl-box: 9.65vw;                /* 方块宽（≈原版 139/1440） */
+  --trl-sweep: clamp(28px, 5.2vw, 90px);   /* 扫描带宽度 */
+  position: absolute;
+  right: max(6.18vw, 14px);
+  bottom: 5%;
+  box-sizing: border-box;
+  /* 宽度：min(38vw, 300px)，并用 max-content 兜底保证文字不会被裁。
+     ⚠️ 为什么不用 max(9.65vw, max-content)：实测 `max()` 与 `max-content` 混用时，
+        浏览器给出的计算值是 116.4px（1440 宽下），**比 9.65vw=139px 还小** ——
+        也就是说"至少按原版比例"这个意图没被兑现，这种写法太脆。
+     改为直接的可预测取值，并说明它相对原版的变化：
+        · 1440 宽：9.65vw=139px → **38vw=547px**（所有者 2026-10-01：「改为 70-80% 的填充，
+          不然太小了」；这里给到一个明显更大、但不会横贯整屏的量级）
+        · 390 宽手机：原 38px（连 "Loading…" 都装不下，实测被裁）→ **148px**
+        · 上限 300px 防止超宽屏上大得离谱；桌面实测约 300px。
+     max-content 只作兜底：万一字号/文案变化导致文字比上述宽度还宽，也保证不裁字。 */
+  width: min(38vw, 300px);
+  min-width: max-content;
+  /* 高 = 4.07vh（原版 44/1080）。
+     这里**故意不写 max(4.07vh, 44px)**：在 640px 高的手机视口上 4.07vh 只有 26px，
+     用 max() 会把它顶到 44px ⇒ 方块被拉成 35×44；按比例缩到 35×26 才像原版那个矮扁条。
+     （原版加载方块不是触控按钮 —— 触控由「整屏点击 / Esc」兜底，它只是附带可点。） */
+  height: 6.2vh;
+  padding: 0 clamp(10px, 1.1vw, 18px);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  outline-offset: 3px;
+  background: #5d5d5d;
+  overflow: hidden;                 /* 扫描带裁在方块内 */
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  /* 读条文字靠这三条居中：方块是 button，flex 居中比绝对定位省事 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* 读条文字 —— 2026-10 所有者反馈「读条时 loading 的字看不到了」加回来的。
+   上一轮我按「不是文字形式的 loading」把方块做成纯图形，**做过头了**，这里改回。
+   配色按原版量测：浅灰字压在深灰方块上（白底黑字是更早的形态，已经不是现在这个）。 */
+.trl-txt {
+  position: relative;
+  z-index: 1;                       /* 低于 .trl-band ⇒ 亮带扫过时压住文字 */
+  font: 700 clamp(13px, 2.1vh, 22px)/1 Arial, 'Helvetica Neue', 'PingFang SC', sans-serif;
+  letter-spacing: .02em;
+  color: #d2d2d2;
+  white-space: nowrap;
+  pointer-events: none;
+}
+/* 循环扫过的亮带（1.2s linear infinite）。
+   ⚠️ 走 `transform: translateX()` 而不是 `left`：left 是布局属性，每帧都要重排 + 重绘，
+     实测在无头软件合成下能把一帧拖到 100ms 量级（连带顶后"跳过"的收尾定时器）；
+     transform 只走合成/绘制，画面一致。
+   ⚠️ translateX 的百分比基准是**元素自身宽度**（= 带宽度），所以起点必须写成 calc 绝对长度：
+      起点 calc(-1 * --trl-sweep) ⇒ 带右缘正好贴着方块左缘（方块内不可见）。
+      终点用 **100%** 而不是 --trl-box：100% 是相对**包含块（方块）的宽度**，
+      方块现在有 max-content 兜底、窄屏会比 9.65vw 更宽，写死 --trl-box 会导致
+      带子扫不到方块右边缘就掉头（视觉上"没扫完"）。 */
+.trl-band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 2;                       /* 压在文字之上：扫过处文字被提亮 */
+  width: var(--trl-sweep);
+  background: linear-gradient(90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, .38) 45%,
+    rgba(255, 255, 255, .38) 55%,
+    rgba(255, 255, 255, 0) 100%);
+  transform: translateX(calc(-1 * var(--trl-sweep)));
+  animation: trl-sweep 1.2s linear infinite;
+  will-change: transform;
+  pointer-events: none;
+}
+@keyframes trl-sweep {
+  from { transform: translateX(calc(-1 * var(--trl-sweep))); }
+  to   { transform: translateX(100%); }
+}
+
+/* 兜底路径（完整动画未开）：只盖一层**纯色**，没有曲绘、没有压暗、没有徽标、没有扫描。 */
+.trl.is-solid .trl-bg,
+.trl.is-solid .trl-badge { display: none; }
+.trl.is-solid .trl-dim { background: #fff; }
+.trl.is-solid.is-dark .trl-dim { background: #0f1116; }
+
+/* 系统要求减少动态效果时：扫描带停在方块左侧外（静止 = 一个纯灰方块，不再是"扫动"）。
+   ⚠️ 不要再写 `left: 200%`（旧版用的是 left 位移，现在改成 transform 了）：
+      基态 transform 本身就是"带右缘贴着方块左缘"，去掉 animation 即天然静止在不可见处。 */
+@media (prefers-reduced-motion: reduce) {
+  .trl-band { animation: none !important; }
+}
+
+/* 左下角提示语（原版加载页同一位置也有这一行）。
+   量测来源：截图里该行亮像素 x 216–625、y 995–1024、色 rgb(101,101,101)、
+   左距 216px（15% 屏宽）、与右下加载方块垂直居中对齐（方块 y 982–1025）。
+   本站取左距 max(6.25vw,14px)、字号 clamp(12px,1.6vh,15px)、颜色取同色系偏亮一档（黑底上更易读）。
+   ⚠️ 它是纯装饰：pointer-events: none —— 否则会挡住「整屏点击 = 跳过」。 */
+.trl-tip {
+  position: absolute;
+  left: max(6.25vw, 14px);
+  bottom: 4.4%;
+  margin: 0;
+  color: #b9b9b9;
+  font: 400 clamp(12px, 1.6vh, 15px)/1.35 -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  letter-spacing: .01em;
+  pointer-events: none;
+}
+
+/* =========================================================
+ * 首屏载入态（与过渡遮罩同一套语言：盖满压暗 + 右下角纯图形加载方块）
+ * 由 js/main.js 在 <html> 上加/去 is-booting 控制；只用伪元素绘制，不新增 DOM 节点
+ * （否则会干扰 main.js 里「#main 为空才写占位」的判断）。
+ *
+ * ⚠️ 2026-10 改版（用户裁定）：**不再显示任何文字**。
+ *    旧版是「斜切黑面板 + 白色 Loading…」，用户明确否掉（"不是现在这种文字形式的 loading"）；
+ *    现在只保留两块：① 整屏压暗（盖住尚未渲染的内容）② 右下角与 .trl-badge 同形同色的加载方块
+ *    （尺寸/底色/扫描带与过渡遮罩里的那一块完全一致，见上方 .trl-badge 的取值来源注释）。
+ * ========================================================= */
+html.is-booting #main::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 400;                 /* 高于过渡遮罩 302：首屏载入必须先于一切 */
+  background: rgba(0, 0, 0, .5);
+  pointer-events: none;
+  animation: boot-dim .18s linear both;
+}
+html.is-booting #main::after {
+  content: '';
+  position: fixed;
+  z-index: 401;
+  right: max(6.18vw, 14px);
+  bottom: 5%;
+  width: 9.65vw;
+  height: 4.07vh;
+  background: #5d5d5d;
+  /* 扫描带：与 .trl-band 同一套配方（宽度 clamp(28px,5.2vw,90px)、1.2s linear infinite）。
+     伪元素只能有一个背景层，所以这里把「方块底色 + 渐变亮带」画在同一个 background 里，
+     并用 background-position 走动画 —— 只动合成属性，不触发布局。 */
+  background-image: linear-gradient(90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, .38) 45%,
+    rgba(255, 255, 255, .38) 55%,
+    rgba(255, 255, 255, 0) 100%);
+  background-repeat: no-repeat;
+  background-size: clamp(28px, 5.2vw, 90px) 100%;
+  background-position: calc(-1 * clamp(28px, 5.2vw, 90px)) 0;
+  animation: boot-sweep 1.2s linear infinite;
+  pointer-events: none;
+}
+
+
+/* 首屏载入的 Loading… 文字（所有者要求加上）。
+   首屏遮罩用的是 #main 的两个伪元素（::before 压暗、::after 画读条方块），
+   一个伪元素只能放一个 background 层、放不下文字，所以文字用**独立静态元素** .boot-txt
+   （写在 index.html 里，显隐由 <html>.is-booting 控制）。
+   尺寸/位置与切风格时的读条方块对齐（右 max(6.18vw,14px)、下 5%）。 */
+.boot-txt {
+  position: fixed;
+  z-index: 402;                     /* 高于首屏方块(401)与过渡遮罩(302) */
+  right: max(6.18vw, 14px);
+  bottom: 5%;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: min(38vw, 300px);
+  height: 6.2vh;
+  padding: 0 clamp(10px, 1.1vw, 18px);
+  font: 700 clamp(13px, 2.1vh, 22px)/1 Arial, 'Helvetica Neue', 'PingFang SC', sans-serif;
+  letter-spacing: .02em;
+  color: #d2d2d2;
+  white-space: nowrap;
+  pointer-events: none;
+}
+html.is-booting .boot-txt { display: flex; }@keyframes boot-dim { from { opacity: 0; } to { opacity: 1; } }
+@keyframes boot-sweep {
+  from { background-position: calc(-1 * clamp(28px, 5.2vw, 90px)) 0; }
+  to   { background-position: 9.65vw 0; }
+}
+/* 系统要求减少动态效果时：只停扫描带，压暗保留（首屏遮罩本身必须还在） */
+@media (prefers-reduced-motion: reduce) {
+  html.is-booting #main::after { animation: none; }
+}
+
+/* ---------- 设置面板：「实验室」分组 + 双闸置灰态 ---------- */
+.set-group {
+  margin: 14px 0 2px;
+  padding-top: 12px;
+  border-top: 1px solid #f0f0f2;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  color: #86868b;
+}
+body.mode-dark .set-group { border-top-color: #2c2c2e; color: #a1a1a6; }
+/* 系统开启「减少动态效果」时：开关置灰，那一行整体降透明度（不隐藏，仍要能看懂为什么关着） */
+.set-row.is-muted .set-info { opacity: .62; }
+.set-row.is-muted .switch { opacity: .45; }
+.set-row.is-muted .switch .slider { cursor: not-allowed; }

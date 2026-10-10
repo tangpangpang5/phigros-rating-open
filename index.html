@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Phigros 谱面打分站</title>
+  <meta name="description" content="收录最新 Phigros 谱面，支持玩家打分与评论的谱面评价系统。" />
+  <link rel="icon" type="image/jpeg" href="九鸟.jpg" />
+  <!-- 背景图预加载：切回「现代」主题时，避免 bg.jpg 现下载造成的可见闪白。
+       只预加载 bg.jpg —— 全仓库没有任何 JS 施加 bg-blue/bg-red/bg-none，实际恒用 bg.jpg（bg2.jpg 预加载纯属浪费流量）。
+       九鸟.jpg 只是 30px 的图标（同页 link rel=icon 已在用），无需额外预加载。 -->
+  <link rel="preload" as="image" href="bg.jpg" />
+  <link rel="stylesheet" href="modern.css?v=1.0.17" id="css-modern" />
+  <link rel="stylesheet" href="minimal.css?v=1.0.17" id="css-minimal" disabled />
+  <link rel="stylesheet" href="layout.css?v=1.0.17" />
+  <script>
+    /* 阻止样式闪烁：按保存的风格启用 CSS，并提前套上 深浅/红蓝 class */
+    (function () {
+      try {
+        var st = localStorage.getItem('dsh_style') || localStorage.getItem('phi_style') || 'modern';
+        var ap = localStorage.getItem('dsh_app') || localStorage.getItem('phi_appearance') || 'light-red';
+        /* 启动时同样「先开目标、再关其它」：旧写法会把两张表都关掉一瞬（st 是未知值时甚至会一直保持
+           「两张都关」）。这里的顺序保证任一时刻至少一张主题样式表是启用的。 */
+        var want = document.getElementById('css-' + st) || document.getElementById('css-modern');
+        if (want) want.disabled = false;
+        ['modern', 'minimal'].forEach(function (k) {
+          if (k === st) return;
+          var el = document.getElementById('css-' + k);
+          if (el) el.disabled = true;
+        });
+        var m = ap.indexOf('dark') === 0 ? 'dark' : 'light';
+        var a = ap.indexOf('blue') >= 0 ? 'blue' : 'red';
+        var cls = ' mode-' + m + ' accent-' + a;
+        /* ⚠️ 本脚本在 head 里执行，此刻 document.body **还不存在** —— 原来直接写
+           document.body.className 会抛 TypeError，并被下面那个空 catch 吞掉，
+           于是「深浅/红蓝」这两个 class 从来没被应用过（属实测发现的静默失效）。
+           这里真的用 try 包住，失败就退到 documentElement，稍后 DOM 就绪时再补到 body。 */
+        try {
+          document.body.className += cls;
+        } catch (e) {
+          document.documentElement.className += cls;
+          var fix = function () {
+            try {
+              document.body.className += cls;
+              document.documentElement.className =
+                document.documentElement.className.replace(/ mode-(dark|light)| accent-(red|blue)/g, '');
+            } catch (e2) { /* 忽略 */ }
+          };
+          if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fix);
+          else fix();
+        }
+      } catch (e) { }
+    })();
+  </script>
+</head>
+<body>
+  <header>
+    <div class="logo">
+      <img class="logo-mark" src="九鸟.jpg" alt="Phigros 图标" />
+      <div>Phigros <span class="grad">谱面评价</span></div>
+    </div>
+    <nav id="navLinks"></nav>
+    <div class="spacer"></div>
+    <button id="appBtn" type="button" class="btn sm ghost" title="外观：浅/深 × 红/蓝">浅·红</button>
+    <button id="styleBtn" type="button" class="btn sm" title="切换风格">简约</button>
+    <div id="userArea"></div>
+    <!-- 设置入口（所有者 2026-10：原来在最顶上，够不着也反直觉，改到头像/退出按钮下面）。
+         header 是 flex-direction:column，折叠态与窄屏横条各自有规则，放这里三态都自然成立。
+         ⚠️ 全站只有这一个 #settingsBtn（t19 的教训：隐藏它 = 手机上打不开设置面板）。 -->
+    <div class="sb-tools">
+      <button id="settingsBtn" type="button" class="btn sm ghost" title="设置">⚙</button>
+    </div>
+  </header>
+  <button id="sbToggle" type="button" class="btn sm ghost" title="折叠/展开侧栏">«</button>
+
+  <main id="main"></main>
+
+  <footer>
+    <p>一个玩家的 Phigros 谱面打分小站。谱面资料整理自萌娘百科，有错漏欢迎指出来。</p>
+    <p>曲绘与谱面归原厂商和作者所有；本页是个人同人学习项目，与 Pigeon Games（鸽游）无关。账号与评分数据存放在本站数据库里。</p>
+    <p>本站为非官方同人项目，与 Pigeon Games（鸽游）无关。曲绘与谱面资料版权归原作者与厂商所有；如版权方或作者要求下架，请在仓库 Issues 提出：<a href="https://github.com/tangpangpang5/phigros-rating-issues/issues" rel="noopener noreferrer">https://github.com/tangpangpang5/phigros-rating-issues/issues</a></p>
+    <p>注册仅需邮箱，邮箱只用于登录与找回密码，不会公开显示；本站不收集其他个人信息。</p>
+    <p>本站使用的曲绘仅作非商业同人展示，如有相关问题请通过站内反馈告知。</p>
+  </footer>
+
+  <div class="modal" id="authModal"></div>
+  <div class="toast" id="toast"></div>
+
+  <!-- ============ 风格 / 外观切换的全屏过渡遮罩（Phigros 加载页语言） ============
+       ⚠️ 必须**静态**写在这里：
+         · 不能放进 #main —— 每次路由都整体重渲染，放里面会被销毁；
+         · 遮罩须是 body 的直接子元素，z-index 302 才能盖住
+           .set-card(301) / .toast(200) / .modal-card(101) / #sbToggle(80) / header(60)。
+       默认 hidden（display:none），显隐与淡入淡出由 js/ui.js 的 trlRun() 控制；
+       样式在 layout.css 的「过渡遮罩」段。勿在此处加内联样式。
+       ==================================================================== -->
+  <div class="trl" id="trl" hidden>
+    <div class="trl-bg" id="trlBg"></div>
+    <div class="trl-dim" id="trlDim"></div>
+    <!-- 主题探针：不是给眼睛看的，是「新主题是否已经应用」这句判据的取样点。
+         它带 .card 类 ⇒ 两套主题给出不同的 border-width / border-radius。 -->
+    <span class="trl-probe card" id="trlProbe" aria-hidden="true"></span>
+    <!-- 右下角加载方块（读条）本身就是「跳过」按钮：
+         整屏点击 / Esc / 点它，都在 150ms 内结束。里的 .trl-band 是循环扫过的亮带。
+         几何/配色来自原版加载页截图的逐像素量测，见 layout.css 里 .trl-badge 的注释。
+         ⚠️ 2026-10 所有者反馈「读条时 loading 的字看不到了」⇒ 文字加回来（.trl-txt）。
+            上一轮我按「不是文字形式的 loading」把方块做成纯图形，做过头了。 -->
+    <button type="button" class="trl-badge" id="trlBadge" aria-label="跳过过渡动画">
+      <span class="trl-txt">Loading…</span><span class="trl-band" aria-hidden="true"></span>
+    </button>
+    <!-- 左下角提示语：原版加载页也有这一行（同样是照片量测出来的）。纯装饰、不可点、
+         不参与「跳过」判定，所以 aria-hidden。文案与本站已有的「Tip」口径一致。
+         ⚠️ 若以后要改成每条随机，请在 trlRun() 里换 textContent，不要在这里写死多份。 -->
+    <p class="trl-tip" aria-hidden="true">Tip: 曲绘与谱面资料，欢迎在站内反馈里纠错</p>
+  </div>
+
+  <!-- 首屏载入的 Loading… 文字（所有者要求加上）。
+       ⚠️ 必须是**独立静态元素**，不能塞进首屏的伪元素里：
+         首屏遮罩是 #main::before（压暗）+ #main::after（读条方块）两个伪元素画的，
+         而一个伪元素只能有一个 background 层、放不下文字。
+       显隐由 <html> 上的 is-booting class 控制（js/main.js 加减），样式在 layout.css 的 .boot-txt。 -->
+  <div class="boot-txt" aria-hidden="true">Loading…</div>
+
+  <script src="config.js?v=1.0.17"></script>
+  <script src="data.js?v=1.0.17"></script>
+  <!-- 模块化主程序（需要 http/https 打开，不能双击 file://） -->
+  <script type="module" src="js/main.js?v=1.0.17"></script>
+  <!-- 回滚方案：如需退回旧版单文件实现，注释掉上面一行，并取消下面一行注释
+  <script src="app.legacy.js"></script>
+  -->
+</body>
+</html>

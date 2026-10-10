@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Phigros 打分站 · 后端自检</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; padding: 24px 18px 60px; background: #f5f5f7; color: #1d1d1f;
+    font-family: -apple-system, "PingFang SC", "Microsoft YaHei", Arial, sans-serif; line-height: 1.7; }
+  .wrap { max-width: 880px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: #6b6b72; font-size: 13px; margin-bottom: 18px; }
+  .card { background: #fff; border: 1px solid #e3e3e8; border-radius: 12px; padding: 16px 18px; margin-bottom: 14px;
+    box-shadow: 0 2px 10px rgba(0,0,0,.04); }
+  .row { display: flex; gap: 10px; align-items: flex-start; padding: 7px 0; border-bottom: 1px dashed #ececf1; }
+  .row:last-child { border-bottom: none; }
+  .tag { flex: 0 0 62px; font-size: 12px; font-weight: 700; text-align: center; border-radius: 999px; padding: 2px 0; }
+  .ok   { background: #e6f7ec; color: #10693a; }
+  .warn { background: #fff6e5; color: #8a5a00; }
+  .bad  { background: #ffeceb; color: #9e1c12; }
+  .info { background: #eef2ff; color: #2c3e9e; }
+  .name { font-weight: 600; font-size: 14px; }
+  .desc { font-size: 13px; color: #55555c; white-space: pre-wrap; word-break: break-word; }
+  code { background: #f2f2f6; padding: 1px 5px; border-radius: 5px; font-size: 12px; }
+  button { border: 1px solid #d2d2da; background: #fff; border-radius: 8px; padding: 6px 14px; font-size: 13px;
+    cursor: pointer; font-family: inherit; }
+  button.primary { background: #1d1d1f; color: #fff; border-color: #1d1d1f; }
+  button:disabled { opacity: .5; cursor: default; }
+  input { border: 1px solid #d2d2da; border-radius: 8px; padding: 7px 10px; font-size: 13px; font-family: inherit; width: 100%; box-sizing: border-box; }
+  .field { margin-bottom: 8px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  pre { background: #1d1d1f; color: #e8e8ed; padding: 12px; border-radius: 10px; overflow: auto; font-size: 12px; max-height: 260px; }
+  a { color: #0a5cd6; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Phigros 打分站 · 后端自检</h1>
+  <div class="sub">只读检查为主，不会改动你的数据（写入探测会插入一条测试评论并立刻删除；
+    若本浏览器已登录，还会带上你的令牌尝试一次「把自己的 is_admin 改成 true」——这是自提权探测，
+    <b>预期被数据库拒绝</b>，若竟然成功会立刻改回并报红）。把结果截图发给开发者即可排查。</div>
+
+  <div class="card" id="cfgCard">
+    <div class="row"><span class="tag info">配置</span><div>
+      <div class="name" id="cfgName">读取 config.js…</div>
+      <div class="desc" id="cfgDesc"></div>
+    </div></div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <b>自动检查</b>
+      <button id="rerun">重新运行</button>
+    </div>
+    <div id="results"></div>
+  </div>
+
+  <div class="card">
+    <b>写入探测（需要真实账号）</b>
+    <div class="desc" style="margin:6px 0 10px">
+      输入一个已确认的邮箱与密码，登录后尝试插入并立即删除一条测试评论。<br>
+      成功 = 数据库策略与登录链路都正常；失败会给出具体错误。
+    </div>
+    <div class="grid2">
+      <div class="field"><input id="pEmail" type="email" placeholder="邮箱" /></div>
+      <div class="field"><input id="pPass" type="password" placeholder="密码" /></div>
+    </div>
+    <button class="primary" id="probeBtn">运行写入探测</button>
+    <div id="probeOut" style="margin-top:10px"></div>
+  </div>
+
+  <div class="card">
+    <b>原始返回</b>
+    <pre id="raw">（运行后显示）</pre>
+  </div>
+
+  <p class="sub">回到 <a href="index.html">打分站首页</a></p>
+</div>
+
+<script src="config.js"></script>
+<script>
+(function () {
+  'use strict';
+  var BC = window.PHIGROS_BACKEND || {};
+  var URL_ = (BC.url || '').replace(/\/+$/, '');
+  var KEY = BC.anonKey || '';
+  var ready = !!(BC.enabled && URL_ && KEY);
+  var rawLog = {};
+
+  function el(id) { return document.getElementById(id); }
+  function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+
+  function addRow(level, name, desc) {
+    var row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = '<span class="tag ' + level + '">' +
+      ({ ok: '通过', warn: '注意', bad: '失败', info: '信息' }[level] || '信息') +
+      '</span><div><div class="name">' + esc(name) + '</div><div class="desc">' + desc + '</div></div>';
+    el('results').appendChild(row);
+  }
+
+  async function req(method, path, body, token) {
+    var headers = { apikey: KEY };
+    if (KEY) headers.Authorization = 'Bearer ' + (token || KEY);
+    if (body) headers['Content-Type'] = 'application/json';
+    var res = await fetch(URL_ + path, {
+      method: method,
+      headers: headers,
+      body: body ? JSON.stringify(body) : undefined
+    });
+    var text = await res.text();
+    var data = null;
+    if (text) { try { data = JSON.parse(text); } catch (e) { data = text; } }
+    rawLog[method + ' ' + path] = { status: res.status, body: data };
+    return { status: res.status, ok: res.ok, data: data };
+  }
+
+  function msgOf(r) {
+    var d = r.data;
+    if (d && typeof d === 'object') return d.message || d.msg || d.hint || d.error_description || d.error || JSON.stringify(d);
+    return String(d || ('HTTP ' + r.status));
+  }
+
+  function dumpRaw() { el('raw').textContent = JSON.stringify(rawLog, null, 2); }
+
+  /* ---------- 配置 ---------- */
+  el('cfgName').textContent = ready ? '已启用（enabled: true）' : '未启用或填写不完整';
+  el('cfgDesc').textContent =
+    'URL: ' + (URL_ || '（空）') + '\nKey: ' + (KEY ? KEY.slice(0, 18) + '…（长度 ' + KEY.length + '）' : '（空）') +
+    '\n注意：文件必须用 http/https 打开（例如 node serve.js 后访问 http://localhost:8000/selfcheck.html），file:// 下所有请求都会失败。';
+
+  function prefixed(k) { return (k || '').indexOf('sb_publishable_') === 0 || (k || '').indexOf('sb_secret_') === 0; }
+
+  /* ---------- 自动检查 ---------- */
+  async function run() {
+    el('results').innerHTML = '';
+    rawLog = {};
+
+    if (!ready) {
+      addRow('bad', '后端未启用', 'config.js 里 <code>enabled</code> / <code>url</code> / <code>anonKey</code> 至少一项缺失，无法继续检查。');
+      dumpRaw();
+      return;
+    }
+    if (prefixed(KEY) && KEY.indexOf('sb_secret_') === 0) {
+      addRow('bad', '密钥用错了', '当前填的是 secret key，请换成 <code>sb_publishable_…</code> 的公钥。');
+    }
+
+    /* 1. Auth 设置 */
+    try {
+      var s = await req('GET', '/auth/v1/settings');
+      if (s.ok) {
+        var d = s.data || {};
+        var auto = d.mailer_autoconfirm;
+        var signup = d.disable_signup === true ? '已关闭注册' : '允许注册';
+        addRow('ok', 'Auth 服务可达', 'Supabase Auth 正常响应。' + signup +
+          (auto === true ? '；<b>邮箱自动确认已开启</b>（注册后可直接登录）' : '；邮箱确认开启（注册后需点邮件里的确认链接）'));
+      } else {
+        addRow('bad', 'Auth 服务不可达', 'HTTP ' + s.status + '：' + esc(msgOf(s)));
+      }
+    } catch (e) {
+      addRow('bad', 'Auth 请求异常', '多半是网络被拦截或页面不是 http(s) 打开的。' + esc(e.message));
+    }
+
+    /* 2. 数据表 / 视图可读性 */
+    var tables = [
+      { p: '/rest/v1/profiles?select=id,username,nickname,avatar_color,is_admin&limit=2', n: 'profiles 视图（昵称/管理员）' },
+      { p: '/rest/v1/ratings?select=id,song_id,user_id,score&limit=2', n: 'ratings 表' },
+      { p: '/rest/v1/comments?select=id,song_id,user_id,text&limit=2', n: 'comments 表' }
+    ];
+    for (var i = 0; i < tables.length; i++) {
+      var t = tables[i];
+      try {
+        var r = await req('GET', t.p);
+        if (r.ok) {
+          addRow('ok', t.n + ' 可读', '返回 ' + (Array.isArray(r.data) ? r.data.length : 0) + ' 行（最多取 2 行作示例）。');
+        } else {
+          addRow('bad', t.n + ' 读取失败', 'HTTP ' + r.status + '：' + esc(msgOf(r)) +
+            (/does not exist/i.test(msgOf(r)) ? '\n表/视图不存在 → 请在 SQL Editor 里执行 supabase-setup.sql。' : ''));
+        }
+      } catch (e) {
+        addRow('bad', t.n + ' 请求异常', esc(e.message));
+      }
+    }
+
+    /* 3. profiles 是否暴露 is_admin */
+    try {
+      var pf = await req('GET', '/rest/v1/profiles?select=is_admin&limit=1');
+      if (pf.ok) addRow('ok', 'profiles 暴露 is_admin', '前端管理员判定依赖它，已就绪。');
+      else addRow('warn', 'profiles 缺少 is_admin', 'HTTP ' + pf.status + '：' + esc(msgOf(pf)) +
+        '\n重跑 supabase-setup.sql 里的 <code>create or replace view public.profiles …</code> 即可修复。');
+    } catch (e) { /* 上面已报过 */ }
+
+    /* 4. 匿名读 users 表：应当读不到任何行（RLS 生效） */
+    try {
+      var us = await req('GET', '/rest/v1/users?select=id,username&limit=3');
+      if (us.ok) {
+        var rows = Array.isArray(us.data) ? us.data.length : 0;
+        if (rows === 0) addRow('ok', 'users 表受 RLS 保护', '匿名读取返回 0 行，符合预期（密码哈希不会外泄）。');
+        else addRow('bad', 'users 表可被匿名读取', '匿名就拿到了 ' + rows + ' 行资料！说明 RLS 未生效或策略过宽，请重跑 supabase-setup.sql。');
+      } else {
+        addRow('ok', 'users 表受 RLS 保护', '匿名读取被拒绝（HTTP ' + us.status + '），符合预期。');
+      }
+    } catch (e) { addRow('warn', 'users 表检查异常', esc(e.message)); }
+
+    /* 5. 匿名写入探测：应当被拒 */
+    var probeId = 'selfcheck_' + Date.now();
+    try {
+      var w = await req('POST', '/rest/v1/comments', {
+        id: probeId, song_id: '__selfcheck__', user_id: '00000000-0000-0000-0000-000000000000',
+        text: 'selfcheck anon probe', created_at: Date.now()
+      });
+      if (w.status === 201 || w.status === 200) {
+        addRow('bad', '匿名竟然能写入评论', 'RLS 没有拦住未登录写入！请立刻重跑 supabase-setup.sql，并确认没有执行过 _临时放行.sql。');
+        await req('DELETE', '/rest/v1/comments?id=eq.' + encodeURIComponent(probeId));
+        addRow('info', '已尝试清理测试数据', '如果上面那条写入成功，已尝试删除探针数据 ' + esc(probeId) + '。');
+      } else {
+        addRow('ok', '未登录写入被拒绝', 'HTTP ' + w.status + '：' + esc(msgOf(w)) + '（这是预期的安全行为）');
+      }
+    } catch (e) {
+      addRow('warn', '匿名写入探测异常', esc(e.message));
+    }
+
+    /* 6. 🔒 自提权探测：谁都别想改自己的 is_admin（本次安全加固的核心）
+     * 判定口径与验收清单 §5.1 一致，两种请求各打一次：
+     *   ① 不带令牌（匿名）PATCH 一条目标记录 {is_admin:true} → 期望 403 + code=42501
+     *   ② 已登录时再带自己的令牌 PATCH 自己那行 → 期望 403 + 42501，并读回 profiles.is_admin 复核
+     * 判定：读回仍为 false（或两种请求都被拒）= 通过；读回变成 true = 失败（严重，立刻尝试改回）；
+     *       返回 2xx 但读不回来 / 后端不可达 = 「未验证」，不算失败。
+     */
+    var escSess = null;
+    try { var sraw = localStorage.getItem('dsh_session'); escSess = sraw ? JSON.parse(sraw) : null; } catch (e) { escSess = null; }
+    var escTok = (escSess && escSess.access_token) ? escSess.access_token : null;
+    var escUid = (escSess && escSess.user_id) ? escSess.user_id : null;
+    var escSentinel = '00000000-0000-0000-0000-000000000000';
+
+    function escLine(tag, r) {
+      var code = (r.data && (r.data.code || r.data.error_code)) || '';
+      var msg = msgOf(r);
+      if (/^HTTP \d+$/.test(msg)) msg = '';   // 后端没给正文时不要重复状态码
+      return tag + '：HTTP ' + r.status + (code ? ' / code=' + code : '') + (msg ? '：' + msg : '');
+    }
+
+    try {
+      // ① 不带令牌（无论是否登录都先打一次）
+      var escAnon = await req('PATCH', '/rest/v1/users?id=eq.' + encodeURIComponent(escUid || escSentinel), { is_admin: true }, null);
+      var escAnonRejected = !(escAnon.ok || escAnon.status === 200 || escAnon.status === 204);
+
+      // ② 已登录：先读自己的状态 → 带自己的令牌改自己那行 → 再读回复核
+      var escSelfLine = '', escSelfRes = null, escBefore = null, escAfter = null;
+      if (escUid) {
+        var escB0 = await req('GET', '/rest/v1/profiles?select=is_admin&id=eq.' + encodeURIComponent(escUid), null, escTok);
+        escBefore = (escB0.ok && Array.isArray(escB0.data) && escB0.data[0]) ? escB0.data[0].is_admin : null;
+        escSelfRes = await req('PATCH', '/rest/v1/users?id=eq.' + encodeURIComponent(escUid), { is_admin: true }, escTok);
+        escSelfLine = escLine('带自己的令牌', escSelfRes);
+        var escB1 = await req('GET', '/rest/v1/profiles?select=is_admin&id=eq.' + encodeURIComponent(escUid), null, escTok);
+        escAfter = (escB1.ok && Array.isArray(escB1.data) && escB1.data[0]) ? escB1.data[0].is_admin : null;
+      }
+
+      var escExpect = '期望：403/401 + <code>42501 permission denied</code>（加固生效时这是正常现象，不是故障）。';
+
+      if (escUid && escAfter === true && escBefore === true) {
+        addRow('info', 'is_admin 自提权探测：未验证',
+          '当前账号本来就是管理员，写回 true 等于空操作，这次探测不能判定加固是否生效（加固后也会被 403 拒掉）。\n' +
+          '· ' + escSelfLine + '\n请换一个<b>普通账号</b>登录后再跑一遍本页。' + escExpect);
+      } else if (escUid && escAfter === true) {
+        addRow('bad', 'is_admin 自提权探测：竟然提权成功',
+          '登录用户竟然能把自己（' + esc(escSess.email || escUid) + '）的 is_admin 从 false 改成 true（' + escSelfLine + '）！\n' +
+          '这是<b>严重</b>问题：任何注册用户都能变成管理员（可删任意评论/评分、读全部用户资料）。\n' +
+          '请立刻在 SQL Editor 重新执行 <b>supabase-setup.sql</b>（含「收回 is_admin 列权限 + 触发器兜底 + admin_set_admin 函数」）；' +
+          '若刚执行过 _临时放行.sql，必须重跑 supabase-setup.sql 才能恢复保护。\n' +
+          '另外请把本页输出发给开发者，并按验收清单第 4.2 节用 Console 手工复验。');
+        var escFix = await req('PATCH', '/rest/v1/users?id=eq.' + encodeURIComponent(escUid), { is_admin: false }, escTok);
+        if (escFix.ok || escFix.status === 204) addRow('info', '已尝试还原', '已把本次探测写进去的 is_admin 改回 false，避免留下痕迹。');
+        else addRow('warn', '探测后未能还原', '请手动执行：<code>update public.users set is_admin = false where id = \'' + esc(escUid) + '\';</code>');
+      } else if (escUid && escAfter === false) {
+        addRow('ok', 'is_admin 自提权探测：已被拒绝',
+          '已登录用户无法把自己改成管理员（列级权限拒绝）。\n' +
+          '· ' + escLine('带自己的令牌', escSelfRes) + '\n' +
+          '· 读回验证：<code>GET /rest/v1/profiles?select=is_admin&amp;id=eq.' + esc(escUid) + '</code> → is_admin=false\n' +
+          '· ' + escLine('不带令牌', escAnon) + '\n' + escExpect);
+      } else if (!escUid && escAnonRejected) {
+        addRow('ok', 'is_admin 自提权探测：已被拒绝',
+          '未登录（不带令牌）无法把 is_admin 改成 true。\n' +
+          '· ' + escLine('不带令牌', escAnon) + '\n' + escExpect +
+          '\n想更彻底地复核：用一个<b>普通账号</b>登录后再跑一遍本页（会改用自己的行并读回验证）。');
+      } else if (!escUid) {
+        addRow('info', 'is_admin 自提权探测：未验证',
+          '未登录时这次 PATCH 返回 ' + escLine('不带令牌', escAnon) +
+          '——匿名请求在「匹配 0 行」时后端同样可能返回 204，据此无法断定加固是否生效。\n' +
+          '请用一个<b>普通账号</b>登录后重新运行本页：那一步会带自己的令牌改自己的行，再读回 <code>profiles.is_admin</code> 复核。' + escExpect);
+      } else {
+        addRow('info', 'is_admin 自提权探测：未验证',
+          '本次 PATCH 返回 ' + escSelfLine + '，但没能读回自己的资料行（profiles 视图不可读 / 无该行），无法确认最终状态。\n' +
+          '请先修好上面「profiles 视图」那一项（重跑 supabase-setup.sql 里的 <code>create or replace view public.profiles …</code>），再重新运行本页。');
+      }
+    } catch (e) {
+      addRow('info', 'is_admin 自提权探测：未验证',
+        '探测请求没能完成：' + esc(e.message) +
+        '\n后端不可达时本项无法判定（这一项不计为失败）。请确认页面是经 http(s) 打开的，且 config.js 里的 Supabase 地址可访问，然后重新运行本页。');
+    }
+
+    /* 7. 本地会话 */
+    var hasSession = false;
+    try { hasSession = !!localStorage.getItem('dsh_session'); } catch (e) { /* 忽略 */ }
+    addRow('info', '本浏览器登录状态', hasSession ? '存在本地会话（dsh_session）。' : '当前未登录。');
+
+    dumpRaw();
+  }
+
+  /* ---------- 写入探测（真实登录） ---------- */
+  el('probeBtn').addEventListener('click', async function () {
+    var btn = el('probeBtn');
+    var out = el('probeOut');
+    var email = el('pEmail').value.trim();
+    var pass = el('pPass').value;
+    out.innerHTML = '';
+    if (!email || !pass) { out.innerHTML = '<div class="desc" style="color:#9e1c12">请先填写邮箱与密码。</div>'; return; }
+    btn.disabled = true;
+    function say(level, text) {
+      out.innerHTML += '<div class="row"><span class="tag ' + level + '">' +
+        ({ ok: '通过', warn: '注意', bad: '失败', info: '信息' }[level] || '信息') +
+        '</span><div><div class="desc">' + text + '</div></div></div>';
+    }
+    try {
+      var t = await req('POST', '/auth/v1/token?grant_type=password', { email: email, password: pass });
+      if (!t.ok) {
+        say('bad', '登录失败：HTTP ' + t.status + ' ' + esc(msgOf(t)));
+        dumpRaw(); btn.disabled = false; return;
+      }
+      var token = t.data.access_token;
+      var uid = t.data.user && t.data.user.id;
+      say('ok', '登录成功，用户 UUID：<code>' + esc(uid) + '</code>');
+
+      var me = await req('GET', '/rest/v1/profiles?select=id,nickname,is_admin&id=eq.' + encodeURIComponent(uid), null, token);
+      if (me.ok && Array.isArray(me.data) && me.data.length) {
+        say('ok', '资料行已自动创建：昵称 <b>' + esc(me.data[0].nickname) + '</b>，管理员 ' + (me.data[0].is_admin ? '是' : '否'));
+      } else {
+        say('warn', '没有查到自己的资料行（触发器可能没生效）：HTTP ' + me.status + ' ' + esc(msgOf(me)));
+      }
+
+      var id = 'selfcheck_' + Date.now();
+      var ins = await req('POST', '/rest/v1/comments', {
+        id: id, song_id: '__selfcheck__', user_id: uid, text: 'selfcheck write probe', created_at: Date.now()
+      }, token);
+      if (ins.ok || ins.status === 201) {
+        say('ok', '写入成功（已插入测试评论）');
+        var del = await req('DELETE', '/rest/v1/comments?id=eq.' + encodeURIComponent(id), null, token);
+        say(del.ok ? 'ok' : 'warn', del.ok ? '测试数据已清理' : '清理失败，请手动删除 id=' + esc(id));
+      } else {
+        say('bad', '写入被拒绝：HTTP ' + ins.status + ' ' + esc(msgOf(ins)) +
+          '<br>若是 <code>row-level security</code>：确认登录状态正常，且 comments 表有 insert 策略（重跑 supabase-setup.sql）。');
+      }
+    } catch (e) {
+      say('bad', '探测异常：' + esc(e.message));
+    }
+    dumpRaw();
+    btn.disabled = false;
+  });
+
+  el('rerun').addEventListener('click', run);
+  run();
+})();
+</script>
+</body>
+</html>

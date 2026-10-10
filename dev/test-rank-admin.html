@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>榜单 + 管理后台 端到端自测</title>
+<link rel="stylesheet" href="modern.css" id="css-modern" />
+<link rel="stylesheet" href="minimal.css" id="css-minimal" disabled />
+<link rel="stylesheet" href="layout.css" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<style>#testbar{position:fixed;top:0;left:0;right:0;z-index:9999;background:#111;color:#eee;font:12px/1.6 ui-monospace,Consolas,monospace;padding:8px 12px;max-height:45vh;overflow:auto;white-space:pre-wrap}</style>
+</head>
+<body>
+<!--
+  ============================ 夹具使用矩阵（Captain 裁定，交接以此为准） ============================
+  本页打 **8124 的 `_mocksupa-rpc.js`（加固版）**，它提供列级权限拒绝、admin_set_admin() 守卫与预置账号
+  （root@example.com / root123456 管理员；user1@example.com / user123456 普通用户）。
+  复现命令：
+      MOCK_PORT=8124 node _mocksupa-rpc.js          # 加固版（或 node _mocksupa-rpc.js 8124）
+      # 无头 dump：http://localhost:8000/_test-rank-admin.html  → 期望 == 64 passed, 0 failed ==
+  ⚠ 不要打 8123：那是 `_mocksupa.js`「旧策略对照组」，故意不加固（PATCH users.is_admin 会成功），
+    留给 `_probe-rank-admin.js` 的 B1 对照与 `_test-auth.html` / `_test-ui.html`（后两者必须空库干净启动）。
+  端口其他角色：8125=空库第三实例，给 `_test-rank.html` 用。
+  夹具单一 owner = 需求与验收；本文件改前先报 Captain。
+  ================================================================================================
+-->
+<header>
+  <div class="sb-tools"><button id="settingsBtn" type="button" class="btn sm ghost">⚙</button></div>
+  <div class="logo"><div>Phigros <span class="grad">谱面评价</span></div></div>
+  <nav id="navLinks"></nav>
+  <div class="spacer"></div>
+  <button id="appBtn" type="button" class="btn sm ghost">浅·红</button>
+  <button id="styleBtn" type="button" class="btn sm">简约</button>
+  <div id="userArea"></div>
+</header>
+<button id="sbToggle" type="button" class="btn sm ghost">«</button>
+<main id="main"></main>
+<div class="modal" id="authModal"></div>
+<div class="toast" id="toast"></div>
+<pre id="testbar">running…</pre>
+
+<!-- 真实 config.js 先跑，然后覆盖成 Mock（必须在 js/config.js 模块求值之前设置）
+     阶段二（只读降级用例）：阶段一结束时会在 sessionStorage 打标记并 reload，
+     本次注入因此换成「不可达端口」，让整站进入只读演示模式。 -->
+<script src="config.js"></script>
+<script src="data.js"></script>
+<script>
+  var __roPhase = false;
+  try { __roPhase = sessionStorage.getItem('phi_rank_test_ro_phase') === '1'; } catch (e) { }
+  window.PHIGROS_BACKEND = __roPhase
+    ? { enabled: true, url: 'http://127.0.0.1:9', anonKey: 'test_publishable_key' }   // 不可达：只读降级
+    : { enabled: true, url: 'http://127.0.0.1:8124', anonKey: 'test_publishable_key' };
+</script>
+<script type="module" src="js/main.js"></script>
+<script type="module">
+import {
+  bootstrapData, getComments, isReadOnly, getRatings, setRating,
+  adminSetAdmin, listProfiles, findProfile
+} from './js/storage.js';
+import { signUp, signIn, signOutUser, currentUser, isAdmin } from './js/auth.js';
+import { router } from './js/ui.js';
+import { getSongs } from './js/songs.js';
+import { rankRows } from './js/rank.js';
+
+const MOCK = 'http://127.0.0.1:8124';
+const ROOT_EMAIL = 'root@example.com', ROOT_PASS = 'root123456';
+const USER_EMAIL = 'user1@example.com', USER_PASS = 'user123456';
+
+const lines = []; let pass = 0, fail = 0;
+const ok = (n, c, x) => { c ? (pass++, lines.push('[P] ' + n + (x ? '  ' + x : ''))) : (fail++, lines.push('[F] ' + n + (x ? '  ' + x : ''))); };
+const draw = () => { document.getElementById('testbar').textContent = lines.join('\n') + '\n== ' + pass + ' passed, ' + fail + ' failed ==\nEVENTCOUNT=' + (pass + fail); };
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function until(fn, ms = 8000) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) { try { if (fn()) return true; } catch (e) { /* 继续等 */ } await sleep(80); }
+  return false;
+}
+const $ = s => document.querySelector(s);
+const $$ = s => Array.from(document.querySelectorAll(s));
+const texts = s => $$(s).map(el => el.textContent.trim());
+const nums = s => texts(s).map(t => parseFloat(t));
+const rowIds = () => $$('#rankList .rank-row').map(el => el.dataset.id);
+const mainText = () => document.getElementById('main').textContent;
+const navText = () => document.getElementById('navLinks').textContent;
+const nonIncreasing = a => { for (let i = 1; i < a.length; i++) if (!(a[i - 1] >= a[i])) return false; return true; };
+
+/* 控制台报错收集：最后断言为空（C14 的预期失败会打印一条 console.error，单独白名单） */
+const consoleErrors = [];
+const origErr = console.error.bind(console);
+console.error = function () { consoleErrors.push(Array.prototype.map.call(arguments, String).join(' ')); origErr.apply(null, arguments); };
+window.addEventListener('error', e => consoleErrors.push('onerror: ' + e.message));
+window.addEventListener('unhandledrejection', e => consoleErrors.push('unhandledrejection: ' + ((e.reason && e.reason.message) || e.reason)));
+
+function setHash(h) { if (location.hash !== h) location.hash = h; router(); }
+
+/* ---------------- 两阶段：阶段一打 Mock，阶段二 reload 成「后端不可达」验只读降级 ---------------- */
+const RO_FLAG = 'phi_rank_test_ro_phase';
+const RO_STORE = 'phi_rank_test_results';
+const PH2 = (() => { try { return sessionStorage.getItem(RO_FLAG) === '1'; } catch (e) { return false; } })();
+function saveResults(extraConsole) {
+  try {
+    localStorage.setItem(RO_STORE, JSON.stringify({ lines: lines, pass: pass, fail: fail, consoleErrors: consoleErrors.concat(extraConsole || []) }));
+    return true;
+  } catch (e) { return false; }
+}
+function loadResults() {
+  try {
+    const raw = localStorage.getItem(RO_STORE);
+    if (!raw) return false;
+    const d = JSON.parse(raw);
+    if (!d || !Array.isArray(d.lines)) return false;
+    lines.length = 0; d.lines.forEach(l => lines.push(l));
+    pass = d.pass | 0; fail = d.fail | 0;
+    (d.consoleErrors || []).forEach(e => consoleErrors.push(e));
+    return true;
+  } catch (e) { return false; }
+}
+
+/* ================= 阶段一：Mock 后端（C1..C16） ================= */
+async function phaseOne() {
+try {
+  window.confirm = () => true;                       // 无头浏览器不弹窗
+
+  /* 0) 等 main.js 初始化完成，然后复位 Mock 数据，保证可重复运行 */
+  const readyUp = await until(() => $$('#songGrid .card').length > 5, 15000);
+  ok('前置：应用初始化完成（首页 312 张卡片）', readyUp, 'cards=' + $$('#songGrid .card').length);
+  await fetch(MOCK + '/_test/reset', { method: 'POST' });
+  await bootstrapData();
+  ok('前置：非只读模式（Mock 8124 可达）', isReadOnly() === false);
+  router();
+
+  /* ---------------- C1：未登录也能看榜单 ---------------- */
+  setHash('#/rank');
+  const rowsShown = await until(() => $$('#rankList .rank-row').length >= 1);
+  ok('C1 未登录进入 #/rank 渲染出榜单行', rowsShown, 'rows=' + $$('#rankList .rank-row').length);
+  ok('C1 页头导航含「榜单」链接', /榜单/.test(navText()) && !!document.querySelector('#navLinks a[href="#/rank"]'));
+  ok('C1 榜单行标题是指向 #/song/<id> 的链接', !!document.querySelector('#rankList .rank-row .rank-title[href^="#/song/"]'),
+    document.querySelector('#rankList .rank-title') && document.querySelector('#rankList .rank-title').getAttribute('href'));
+  ok('C1 榜单行含曲绘占位与星级样式', !!document.querySelector('#rankList .rank-cover .cover-img') && !!document.querySelector('#rankList .rank-score .score-stars'));
+  ok('C1 榜单控件齐全（#rankSort/#rankDir/#rankMin/#rankDiff/#rankCount）',
+    !!( $('#rankSort') && $('#rankDir') && $('#rankMin') && $('#rankDiff') && $('#rankCount')));
+
+  /* ---------------- C2 / C3 ---------------- */
+  const avgSeq = nums('#rankList .rank-avg');
+  ok('C2 默认按平均分降序：.rank-avg 序列非递增', nonIncreasing(avgSeq), JSON.stringify(avgSeq));
+  const noSeq = nums('#rankList .rank-no');
+  ok('C3 .rank-no 从 1 连续递增且行数一致',
+    noSeq.length === $$('#rankList .rank-row').length && noSeq.every((n, i) => n === i + 1), JSON.stringify(noSeq));
+  ok('附加 #rankCount 文案含上榜数与评分总数', /上榜 \d+ 首 · 共收到 \d+ 条评分/.test($('#rankCount').textContent), $('#rankCount').textContent);
+
+  /* ---------------- 造数据：让「人数榜」与「均分榜」顺序不同 ---------------- */
+  const stamp = Date.now();
+  await signUp('rankA' + stamp + '@example.com', 'abc123456', '榜单甲');
+  await setRating('igallta', 5);
+  await signUp('rankB' + stamp + '@example.com', 'abc123456', '榜单乙');
+  await setRating('igallta', 5);
+  await signOutUser();
+  await bootstrapData();
+  ok('附加 造数据成功（igallta 变成 3 人评 / 均分 5.7）',
+    getRatings().filter(r => r.song_id === 'igallta').length === 3, JSON.stringify(getRatings().length));
+
+  setHash('#/rank');
+  await until(() => $$('#rankList .rank-row').length >= 1);
+  const beforeIds = rowIds();
+
+  /* ---------------- C4：切换维度 ---------------- */
+  const sortSel = $('#rankSort');
+  sortSel.value = 'count'; sortSel.dispatchEvent(new Event('change'));
+  await sleep(120);
+  const countSeq = nums('#rankList .rank-count');
+  const afterIds = rowIds();
+  ok('C4 切到「评分人数」后 .rank-count 序列非递增', nonIncreasing(countSeq) && countSeq.length >= 2, JSON.stringify(countSeq));
+  ok('C4 人数榜顺序与均分榜不同（数据能体现差异）', JSON.stringify(beforeIds) !== JSON.stringify(afterIds),
+    beforeIds.join(',') + ' → ' + afterIds.join(','));
+  sortSel.value = 'level'; sortSel.dispatchEvent(new Event('change'));
+  await sleep(120);
+  ok('C4 切到「难度」不报错且有行', $$('#rankList .rank-row').length >= 1 && $$('#rankList .rank-diff').length >= 1);
+
+  /* ---------------- C5：最少评分人数阈值 ---------------- */
+  const minSel = $('#rankMin');
+  const rowsBeforeMin = $$('#rankList .rank-row').length;
+  minSel.value = '3'; minSel.dispatchEvent(new Event('change'));
+  await sleep(120);
+  const rows3 = $$('#rankList .rank-row').length;
+  ok('C5 minCount=3 时行数不增加且每行 count>=3',
+    rows3 <= rowsBeforeMin && rows3 >= 1 && nums('#rankList .rank-count').every(n => n >= 3),
+    rowsBeforeMin + ' → ' + rows3 + ' / counts=' + JSON.stringify(nums('#rankList .rank-count')));
+  minSel.value = '20'; minSel.dispatchEvent(new Event('change'));
+  await sleep(120);
+  ok('C5 minCount=20 时空结果有明确文案（不白屏）',
+    $$('#rankList .rank-row').length === 0 && /没有满足条件的谱面/.test($('#rankList').textContent),
+    $('#rankList').textContent.trim().slice(0, 40));
+  ok('C5 空结果时 #rankCount 仍给出文案', /上榜 0 首/.test($('#rankCount').textContent), $('#rankCount').textContent);
+  minSel.value = '1'; minSel.dispatchEvent(new Event('change'));
+  await sleep(120);
+
+  /* ---------------- C6：难度筛选 ---------------- */
+  const diffSel = $('#rankDiff');
+  diffSel.value = 'AT'; diffSel.dispatchEvent(new Event('change'));
+  await sleep(120);
+  const diffTexts = texts('#rankList .rank-diff');
+  ok('C6 难度筛选 AT 后每行 .rank-diff 都含 AT', diffTexts.length >= 1 && diffTexts.every(t => t.indexOf('AT') >= 0),
+    JSON.stringify(diffTexts));
+  diffSel.value = 'all'; diffSel.dispatchEvent(new Event('change'));
+  await sleep(120);
+
+  /* ---------------- 附加：升降序按钮 ---------------- */
+  const descIds = rowIds();
+  $('#rankDir').click();
+  await sleep(120);
+  ok('附加 点 #rankDir 后方向反转（顺序变化且文案为 ↑ 升序）',
+    JSON.stringify(rowIds()) !== JSON.stringify(descIds) && /↑ 升序/.test($('#rankDir').textContent),
+    descIds.join(',') + ' → ' + rowIds().join(',') + ' / ' + $('#rankDir').textContent);
+  $('#rankDir').click();
+  await sleep(120);
+
+  /* ---------------- C7：深链 / 重新路由 ---------------- */
+  ok('C7 hash 仍是 #/rank（深链可刷新）', location.hash === '#/rank', location.hash);
+  router();
+  await until(() => $$('#rankList .rank-row').length >= 1);
+  ok('C7 再次 router() 后仍渲染榜单行', $$('#rankList .rank-row').length >= 1, 'rows=' + $$('#rankList .rank-row').length);
+  ok('附加 纯函数在空数据下返回空数组（只读降级路径不抛异常）', Array.isArray(rankRows([], [], {})) && rankRows([], [], {}).length === 0);
+
+  /* ---------------- C8：未登录访问后台 ---------------- */
+  await signOutUser();
+  setHash('#/admin');
+  const gate = await until(() => /请先登录/.test(mainText()));
+  ok('C8 未登录访问 #/admin 提示「请先登录」并给登录按钮', gate && !!$('#adminLoginBtn'), mainText().trim().slice(0, 30));
+  ok('C8 未登录时后台没有任何提权按钮', $$('.admin-toggle-admin').length === 0);
+  ok('C8 未登录时导航没有「后台」链接', !/后台/.test(navText()));
+
+  /* ---------------- C9 / C14：普通用户 ---------------- */
+  await signIn(USER_EMAIL, USER_PASS);
+  await bootstrapData();
+  setHash('#/admin');
+  const noPerm = await until(() => /无权限访问（需要管理员身份）/.test(mainText()));
+  ok('C9 普通用户访问 #/admin 出现「无权限访问（需要管理员身份）」', noPerm, mainText().trim().slice(0, 30));
+  ok('C9 普通用户导航里没有「后台」链接', !/后台/.test(navText()), navText().trim());
+  ok('C9 普通用户页面里没有提权按钮', $$('.admin-toggle-admin').length === 0);
+
+  const meUser = currentUser();
+  let threw = false, emsg = '';
+  try { await adminSetAdmin(meUser.id, true); } catch (e) { threw = true; emsg = e.message; }
+  ok('C14 普通用户直接调 adminSetAdmin(自己,true) 抛错', threw, emsg);
+  ok('C14 被拒后 isAdmin() 仍为 false', isAdmin() === false);
+
+  /* ---------------- C10：管理员 ---------------- */
+  await signIn(ROOT_EMAIL, ROOT_PASS);
+  await bootstrapData();
+  router();
+  ok('C10 管理员登录后导航出现「后台」链接', /后台/.test(navText()) && !!document.querySelector('#navLinks a[href="#/admin"]'), navText().trim());
+  setHash('#/admin');
+  const adminShown = await until(() => $$('.admin-user-row').length >= 2);
+  const state = await (await fetch(MOCK + '/_test/state')).json();
+  ok('C10 后台用户列表行数 == profiles 行数（管理员能读全部用户）',
+    adminShown && $$('.admin-user-row').length === state.profiles.length,
+    'rows=' + $$('.admin-user-row').length + ' profiles=' + state.profiles.length);
+  ok('C10 用户行包含昵称/邮箱/身份标签', !!$('.admin-user-name') && !!$('.admin-user-mail') && !!$('.admin-user-role'),
+    texts('.admin-user-name').join(' | '));
+  ok('C10 用户行显示评分与评论数', /评分 \d+ · 评论 \d+/.test($('.admin-user-stats').textContent), $('.admin-user-stats').textContent.trim());
+
+  /* ---------------- C11：评论管理 ---------------- */
+  const cmtRows0 = $$('.admin-comment-row').length;
+  const cmts0 = getComments().length;
+  ok('C11 后台列出评论（行数 >= 1）', cmtRows0 >= 1, 'rows=' + cmtRows0 + ' comments=' + cmts0);
+  const delBtn = document.querySelector('.admin-comment-del');
+  const delId = delBtn.dataset.id;
+  delBtn.click();
+  const gone = await until(() => $$('.admin-comment-row').length === cmtRows0 - 1);
+  ok('C11 删除评论后该行消失', gone, 'rows=' + $$('.admin-comment-row').length);
+  ok('C11 删除评论后存储层少一条', getComments().length === cmts0 - 1 && !getComments().some(c => c.id === delId),
+    'comments=' + getComments().length);
+
+  /* ---------------- 附加：评论筛选 ---------------- */
+  const restSong = getComments()[0] ? getComments()[0].song_id : '';
+  const cq = $('#adminCommentQuery');
+  cq.value = restSong; cq.dispatchEvent(new Event('input'));
+  await sleep(100);
+  const filtered = $$('.admin-comment-row').length;
+  cq.value = 'zzz-不存在-zzz'; cq.dispatchEvent(new Event('input'));
+  await sleep(100);
+  ok('附加 评论筛选：命中关键词保留、无命中出空态文案',
+    filtered >= 1 && $$('.admin-comment-row').length === 0 && /还没有评论。/.test($('#adminCommentList').textContent),
+    'filtered=' + filtered + ' / ' + $('#adminCommentList').textContent.trim().slice(0, 20));
+  cq.value = ''; cq.dispatchEvent(new Event('input'));
+  await sleep(100);
+
+  /* ---------------- C12：自己那一行禁用 ---------------- */
+  const meRow = document.querySelector('.admin-user-row[data-id="' + currentUser().id + '"]');
+  const meBtn = meRow && meRow.querySelector('.admin-toggle-admin');
+  ok('C12 自己那一行的提权按钮 disabled 且 title 含「不能修改自己」',
+    !!meBtn && meBtn.disabled === true && /不能修改自己/.test(meBtn.getAttribute('title') || ''),
+    meBtn ? ('disabled=' + meBtn.disabled + ' title=' + meBtn.getAttribute('title')) : 'no-button');
+
+  /* ---------------- 附加：用户搜索 ---------------- */
+  const uq = $('#adminUserQuery');
+  uq.value = 'user1'; uq.dispatchEvent(new Event('input'));
+  await sleep(100);
+  ok('附加 用户搜索按邮箱命中 1 行', $$('.admin-user-row').length === 1, 'rows=' + $$('.admin-user-row').length);
+  uq.value = 'zzz-不存在-zzz'; uq.dispatchEvent(new Event('input'));
+  await sleep(100);
+  ok('附加 用户搜索无命中出空态文案', $$('.admin-user-row').length === 0 && /没有匹配的用户。/.test($('#adminUserList').textContent));
+  uq.value = ''; uq.dispatchEvent(new Event('input'));
+  await sleep(100);
+
+  /* ---------------- C13：提权别人（页面无需刷新即变化） ---------------- */
+  const target = listProfiles().find(p => p && p.id !== currentUser().id && !p.is_admin);
+  ok('C13 存在可提权的目标用户（普通用户）', !!target, target ? target.username : 'none');
+  const tBtn = target && document.querySelector('.admin-user-row[data-id="' + target.id + '"] .admin-toggle-admin');
+  ok('C13 目标行按钮文案为「设为管理员」', !!tBtn && /设为管理员/.test(tBtn.textContent), tBtn ? tBtn.textContent : 'none');
+  if (tBtn) tBtn.click();
+  const promoted = await until(() => {
+    const row = document.querySelector('.admin-user-row[data-id="' + target.id + '"]');
+    return !!(row && /管理员/.test(row.querySelector('.admin-user-role').textContent) && !/普通/.test(row.querySelector('.admin-user-role').textContent));
+  });
+  ok('C13 提权后该行身份标签立即变成「管理员」', promoted,
+    (document.querySelector('.admin-user-row[data-id="' + (target && target.id) + '"] .admin-user-role') || {}).textContent);
+  ok('C13 提权后本地资料缓存里 is_admin=true', !!(findProfile(target.id) || {}).is_admin);
+
+  /* ---------------- C18：写成功 / 刷新失败要分开处理（并保证按钮一定复位） ---------------- */
+  const realFetch = window.fetch.bind(window);
+  function patchFetch(pred, make) {
+    window.fetch = function (url, opts) {
+      const u = String(url);
+      return pred(u, opts) ? make(u, opts) : realFetch(url, opts);
+    };
+  }
+  function restoreFetch() { window.fetch = realFetch; }
+  window.fetch = realFetch;                       // 让 storage.js 里的 fetch 走可替换的 window.fetch
+
+  // (a) 提权函数本身失败：走 catch 分支，按钮必须复位、文案恢复
+  const tgtA = listProfiles().find(p => p && p.id !== currentUser().id && !p.is_admin);
+  const btnA = tgtA && document.querySelector('.admin-user-row[data-id="' + tgtA.id + '"] .admin-toggle-admin');
+  if (btnA) {
+    patchFetch(u => u.indexOf('/rest/v1/rpc/admin_set_admin') >= 0, () => Promise.reject(new Error('模拟：提权函数不可达')));
+    btnA.click();
+    const restored = await until(() => btnA.disabled === false && /设为管理员/.test(btnA.textContent), 5000);
+    restoreFetch();
+    ok('C18a 提权失败后按钮复位且文案恢复（finally 生效）', restored,
+      'disabled=' + btnA.disabled + ' text=' + btnA.textContent + ' toast=' + $('#toast').textContent);
+    ok('C18a 提权失败提示的是操作失败（不是「已生效」）',
+      /模拟：提权函数不可达|操作失败/.test($('#toast').textContent) && !/已生效/.test($('#toast').textContent),
+      $('#toast').textContent);
+  } else {
+    ok('C18a 存在可用的提权目标', false, 'none');
+  }
+
+  // (b) 写成功但列表刷新失败：提示「已生效，刷新页面可见」，且界面仍反映新身份
+  const tgtB = listProfiles().find(p => p && p.id !== currentUser().id && !p.is_admin);
+  const btnB = tgtB && document.querySelector('.admin-user-row[data-id="' + tgtB.id + '"] .admin-toggle-admin');
+  if (btnB) {
+    patchFetch(u => u.indexOf('/rest/v1/profiles?') >= 0,
+      () => Promise.resolve({ ok: false, status: 500, text: () => Promise.resolve('{"message":"模拟：列表刷新失败"}') }));
+    btnB.click();
+    const roleChanged = await until(() => {
+      const row = document.querySelector('.admin-user-row[data-id="' + tgtB.id + '"]');
+      return !!(row && /管理员/.test(row.querySelector('.admin-user-role').textContent) && !/普通/.test(row.querySelector('.admin-user-role').textContent));
+    }, 6000);
+    const toastText = $('#toast').textContent;
+    restoreFetch();
+    const btnNow = document.querySelector('.admin-user-row[data-id="' + tgtB.id + '"] .admin-toggle-admin');
+    ok('C18b 刷新失败时提示「已生效，刷新页面可见」而不是「操作失败」', /已生效，刷新页面可见/.test(toastText), toastText);
+    ok('C18b 刷新失败后界面仍显示新身份（本地缓存已就地更新）', roleChanged &&
+      !!(document.querySelector('.admin-user-row[data-id="' + tgtB.id + '"] .admin-user-role').textContent).match(/管理员/));
+    ok('C18b 重渲染后的按钮处于可用状态', !!btnNow && btnNow.disabled === false, btnNow ? 'disabled=' + btnNow.disabled : 'no-button');
+  } else {
+    ok('C18b 存在可用的提权目标', false, 'none');
+  }
+
+  /* ---------------- C19：avatar_color 白名单（防 CSS 注入） ---------------- */
+  const victim = listProfiles().find(p => p && p.id !== currentUser().id);
+  if (victim) {
+    const sess = JSON.parse(localStorage.getItem('dsh_session') || '{}');
+    const authHeaders = { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (sess.access_token || '') };
+    const put = color => fetch(MOCK + '/rest/v1/profiles?id=eq.' + encodeURIComponent(victim.id), {
+      method: 'PATCH', headers: authHeaders, body: JSON.stringify({ avatar_color: color })
+    });
+    const pr = await put('red;background:url(evil)');       // 伪造一个会被当成 CSS 的值
+    await bootstrapData();
+    router();
+    await sleep(150);
+    const span = document.querySelector('.admin-user-row[data-id="' + victim.id + '"] .avatar');
+    const styleAttr = span ? (span.getAttribute('style') || '') : '';
+    ok('C19 非法 avatar_color 不进 style（渲染前白名单回退默认色）',
+      !!span && styleAttr.indexOf('evil') < 0 && styleAttr.indexOf('#6c5ce7') >= 0,
+      'PATCH=' + pr.status + ' style=' + styleAttr);
+    await put('#6c5ce7');                                   // 复原，不污染 Mock
+    await bootstrapData();
+    router();
+    await sleep(120);
+  } else {
+    ok('C19 存在可测的目标资料行', false, 'none');
+  }
+
+
+  /* ---------------- C16：既有页头行为不回退 ---------------- */
+  ok('C16 登录后页头显示昵称与「我的主页」', /管理员甲/.test(document.getElementById('userArea').textContent) && /我的主页/.test(navText()),
+    document.getElementById('userArea').textContent.trim());
+  await signOutUser();
+  router();
+  ok('C16 未登录时出现 #loginBtn 与注册按钮', !!$('#loginBtn') && !!$('#registerBtn'));
+
+  /* ---------------- 控制台 ---------------- */
+  const unexpected = consoleErrors.filter(t => !/管理员身份修改失败|不能修改自己的管理员身份/.test(t));
+  ok('控制台无意外报错（C14 预期被拒的错误已白名单）', unexpected.length === 0, unexpected.slice(0, 2).join(' || ').slice(0, 200));
+} catch (e) {
+  lines.push('[F] EXCEPTION ' + (e && e.message ? e.message : String(e)));
+  lines.push(((e && e.stack) ? e.stack.split('\n').slice(0, 5).join('\n') : ''));
+  fail++;
+}
+}
+
+/* ================= 阶段二：后端不可达 → 只读演示模式（C17） ================= */
+async function phaseTwo() {
+try {
+  window.confirm = () => true;
+  const loaded = loadResults();
+  ok('C17 阶段一结果已跨 reload 保留', loaded, 'lines=' + lines.length + ' pass=' + pass + ' fail=' + fail);
+
+  // 曲库走同源 songs.json，不依赖 Supabase：只读模式下也必须加载成功
+  const songsReady = await until(() => getSongs().length > 300, 20000);
+  ok('C17 不可达后端下曲库仍加载（songs.json 同源，不依赖 Supabase）', songsReady, 'songs=' + getSongs().length);
+  const ro = await until(() => isReadOnly() === true, 15000);
+  ok('C17 后端不可达 → isReadOnly() 为 true（自动降级只读）', ro);
+
+  // 重新载入从 #/admin 开始（阶段一最后停在那里），先显式回首页确认降级后首页仍可用
+  setHash('#/');
+  const homeOk = await until(() => $$('#songGrid .card').length > 5, 10000);
+  ok('C17 只读模式下首页仍渲染卡片', homeOk, 'cards=' + $$('#songGrid .card').length);
+
+  // #/rank：用本地演示数据照常出榜，并给出只读提示
+  setHash('#/rank');
+  const rankShown = await until(() => $$('#rankList .rank-row').length >= 1, 10000);
+  ok('C17 只读模式下 #/rank 仍渲染榜单行（.rank-row >= 1）', rankShown, 'rows=' + $$('#rankList .rank-row').length);
+  ok('C17 只读模式下榜单页出现「只读演示模式」提示', /只读演示模式/.test(mainText()), mainText().replace(/\s+/g, ' ').trim().slice(0, 60));
+  ok('C17 只读模式下 #rankCount 仍给出统计文案', /上榜 \d+ 首 · 共收到 \d+ 条评分/.test(($('#rankCount') || {}).textContent || ''),
+    ($('#rankCount') || {}).textContent);
+
+  // #/admin：明确提示不可用，且不出现任何提权按钮
+  setHash('#/admin');
+  const adminMsg = await until(() => /管理后台不可用/.test(mainText()), 10000);
+  ok('C17 只读模式下 #/admin 出现「管理后台不可用」', adminMsg, mainText().replace(/\s+/g, ' ').trim().slice(0, 60));
+  ok('C17 只读模式下后台没有任何提权按钮', $$('.admin-toggle-admin').length === 0);
+
+  // 未捕获异常：只读降级只允许「后端数据读取失败」这条预期 console.error
+  const unexpected2 = consoleErrors.filter(t => !/后端数据读取失败|管理员身份修改失败|不能修改自己的管理员身份/.test(t));
+  ok('C17 只读降级过程无未捕获异常', unexpected2.length === 0, unexpected2.slice(0, 2).join(' || ').slice(0, 200));
+} catch (e) {
+  lines.push('[F] EXCEPTION(只读阶段) ' + (e && e.message ? e.message : String(e)));
+  fail++;
+}
+  // 清掉标记，让下一次运行从阶段一开始
+  try { sessionStorage.removeItem(RO_FLAG); localStorage.removeItem(RO_STORE); } catch (e) { /* 忽略 */ }
+  draw();
+}
+
+/* ================= 调度 ================= */
+if (PH2) {
+  await phaseTwo();
+} else {
+  await phaseOne();
+  if (saveResults()) {
+    try { sessionStorage.setItem(RO_FLAG, '1'); } catch (e) { /* 忽略 */ }
+    document.getElementById('testbar').textContent =
+      lines.join('\n') + '\n… 阶段一完成（pass=' + pass + ' fail=' + fail + '），正在以「后端不可达」重载，继续跑只读降级用例…';
+    await sleep(60);
+    location.reload();
+  } else {
+    ok('阶段一结果落盘（localStorage 可用）', false, 'localStorage 写入失败，无法执行阶段二');
+    draw();
+  }
+}
+</script>
+</body>
+</html>

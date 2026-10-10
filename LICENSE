@@ -1,0 +1,34 @@
+MIT License
+
+Copyright (c) 2026 tangpangpang5
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+--------------------------------------------------------------------------
+注意 / NOTE
+
+上述 MIT 许可仅覆盖本仓库的**代码**。
+
+本仓库**不包含**曲目数据（songs.json）与曲绘（covers/）：
+曲目资料原始整理来自萌娘百科，曲绘版权归 Phigros 的曲师、插画师与
+发行方 Pigeon Games（鸽游）所有 —— 这些内容不在本许可的授权范围内，
+也不得随本代码一起按 MIT 再分发。
+
+The MIT license above covers the CODE in this repository only.
+Song data and cover artwork are NOT included and are NOT licensed here.

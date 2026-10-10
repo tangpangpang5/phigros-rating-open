@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>端到端自测（Auth + 打分 + 评论）</title>
+<!--
+  ============================ 夹具使用矩阵（Captain 裁定，交接以此为准） ============================
+  本页打 **8123 的 `_mocksupa.js`（旧策略对照组）**，且**必须跑在干净启动的空库实例上**：
+  本页断言「profiles 初始为空」「同一用户的平均分唯一（9 → 7）」「评论数为 1」，
+  预置数据或复用别的用例留下的状态会让这些断言失败（实测会被污染成 7.5 / 6.5）。
+  复现命令：
+      # 先强制释放 8123（按端口持有者杀），确认 PID 变化后再起
+      MOCK_PORT=8123 node _mocksupa.js        # 不要加 MOCK_SEED_DATA=1
+      # 然后无头 dump：http://localhost:8000/_test-auth.html   → 期望 == 24 passed, 0 failed ==
+  注意：`/_test/reset` **不清 authUsers**，所以「干净」= 重启进程，不是调 reset。
+  端口其他角色：8124=加固版（`_mocksupa-rpc.js`，给 `_test-admin.html`/`_test-rank-admin.html` 用）；
+               8125=空库第三实例（给 `_test-rank.html` 用）。
+  夹具单一 owner = 需求与验收；本文件改前先报 Captain。
+  ================================================================================================
+-->
+<style>
+  body { font-family: ui-monospace, Consolas, monospace; padding: 18px; background: #111; color: #eee; }
+  .p { color: #4ade80; } .f { color: #f87171; } .i { color: #93c5fd; }
+  pre { white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<pre id="out">running…</pre>
+
+<!-- 关键：必须在模块之前注入后端配置，指向本地 Mock Supabase -->
+<script>
+  window.PHIGROS_BACKEND = { enabled: true, url: 'http://127.0.0.1:8123', anonKey: 'test_publishable_key' };
+</script>
+<script type="module">
+import { bootstrapData, isReadOnly, getProfiles, avgScore, myRating, getCommentsFor, setRating, addComment, deleteComment, getSession } from './js/storage.js';
+import { signUp, signIn, signOutUser, currentUser, isAdmin, refreshProfile, resendConfirm } from './js/auth.js';
+
+const lines = [];
+let pass = 0, fail = 0;
+function ok(name, cond, extra) {
+  if (cond) { pass++; lines.push('<span class="p">PASS</span> ' + name + (extra ? '  ' + extra : '')); }
+  else { fail++; lines.push('<span class="f">FAIL</span> ' + name + (extra ? '  ' + extra : '')); }
+}
+function info(t) { lines.push('<span class="i">---- ' + t + '</span>'); }
+function draw() { document.getElementById('out').innerHTML = lines.join('\n') + '\n\n== ' + pass + ' passed, ' + fail + ' failed ==\nEVENTCOUNT=' + (pass + fail); }
+
+const EMAIL = 'tester@example.com';
+const PASS = 'abc123456';
+
+try {
+  info('1. 初始拉取（应为空 + 可写模式）');
+  await bootstrapData();
+  ok('bootstrapData 成功', true);
+  ok('非只读模式', isReadOnly() === false, 'readOnly=' + isReadOnly());
+  ok('profiles 初始为空', getProfiles().length === 0);
+
+  info('2. 注册（Mock 自动确认邮箱）');
+  const r = await signUp(EMAIL, PASS, '测试君');
+  ok('signUp 返回 needsConfirm=false', r && r.needsConfirm === false, JSON.stringify(r));
+  ok('已保存会话', !!getSession() && !!getSession().access_token);
+  ok('currentUser 昵称正确', currentUser() && currentUser().nickname === '测试君', JSON.stringify(currentUser()));
+  ok('非管理员', isAdmin() === false);
+
+  info('3. 注册后资料行可读（profiles 视图）');
+  await bootstrapData();
+  const me = currentUser();
+  ok('profiles 有自己一行', getProfiles().some(p => p.id === me.id), 'count=' + getProfiles().length);
+
+  info('4. 打分：新增 → 修改');
+  await setRating('rrharil', 9);
+  ok('新增评分后平均分 9', avgScore('rrharil') === 9, 'avg=' + avgScore('rrharil'));
+  ok('myRating 记录正确', myRating('rrharil') && myRating('rrharil').score === 9);
+  await setRating('rrharil', 7);
+  ok('修改评分后平均分 7（不是 8）', avgScore('rrharil') === 7, 'avg=' + avgScore('rrharil'));
+
+  info('5. 评论：发表 → 读取 → 删除');
+  const c = await addComment('rrharil', '这是一条自测评论');
+  ok('评论已插入', getCommentsFor('rrharil').length === 1, 'len=' + getCommentsFor('rrharil').length);
+  ok('评论字段为 snake_case', !!(c.song_id && c.user_id && c.text && c.created_at));
+  await deleteComment(c.id);
+  ok('评论已删除', getCommentsFor('rrharil').length === 0);
+
+  info('6. 退出 → 未登录写入应被拒（RLS 行为）');
+  await signOutUser();
+  ok('退出后无会话', !getSession());
+  ok('退出后 currentUser 为 null', currentUser() === null);
+  let blocked = false, bmsg = '';
+  try { await addComment('rrharil', '不该成功'); } catch (e) { blocked = true; bmsg = e.message; }
+  ok('未登录评论被拒绝', blocked, bmsg);
+
+  info('7. 重新登录 → 错误密码');
+  const u = await signIn(EMAIL, PASS);
+  ok('登录成功', !!u && u.nickname === '测试君', JSON.stringify(u));
+  let bad = false, bm2 = '';
+  try { await signIn(EMAIL, 'wrong-password'); } catch (e) { bad = true; bm2 = e.message; }
+  ok('错误密码被拒绝且提示可读', bad && /不正确|Invalid login/i.test(bm2), bm2);
+  ok('被拒后仍是登录状态', !!currentUser());
+  await refreshProfile();
+  ok('refreshProfile 拿到资料', currentUser().nickname === '测试君');
+
+  info('8. 重复注册应报错');
+  let dup = false, dm = '';
+  const keep = getSession();
+  try { await signUp(EMAIL, PASS, '又一个小号'); } catch (e) { dup = true; dm = e.message; }
+  ok('重复邮箱注册被拒绝', dup, dm);
+  ok('重复注册失败不影响现有会话', !!keep && !!getSession());
+
+  info('9. 重发验证邮件接口可达');
+  let rs = false, rsm = '';
+  try { await resendConfirm(EMAIL); rs = true; } catch (e) { rsm = e.message; }
+  ok('resendConfirm 调用成功', rs, rsm);
+} catch (e) {
+  lines.push('<span class="f">EXCEPTION</span> ' + (e && e.message ? e.message : String(e)));
+  lines.push((e && e.stack ? e.stack : '').split('\n').slice(0, 6).join('\n'));
+  fail++;
+}
+draw();
+</script>
+</body>
+</html>

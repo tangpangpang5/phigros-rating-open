@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>UI 端到端自测</title>
+<!--
+  ============================ 夹具使用矩阵（Captain 裁定，交接以此为准） ============================
+  本页打 **8123 的 `_mocksupa.js`（旧策略对照组）**，且**每页各起一个干净启动的空库实例**：
+  本页会注册新账号、写评分与评论；若与 `_test-auth.html` 共用同一个实例（或复用旧实例），
+  会因残留状态报 `EXCEPTION Failed to fetch`（实测掉到 5/1）。
+  复现命令：
+      # 每页各自：按端口持有者强杀 8123 → 确认 PID 变化 → 空库启动
+      MOCK_PORT=8123 node _mocksupa.js
+      # 无头 dump：http://localhost:8000/_test-ui.html   → 期望 == 30 passed, 0 failed ==
+  端口其他角色：8124=加固版（`_mocksupa-rpc.js`，给 `_test-admin.html`/`_test-rank-admin.html` 用）；
+               8125=空库第三实例（给 `_test-rank.html` 用）。
+  夹具单一 owner = 需求与验收；本文件改前先报 Captain。
+  ================================================================================================
+-->
+<link rel="stylesheet" href="modern.css" id="css-modern" />
+<link rel="stylesheet" href="minimal.css" id="css-minimal" disabled />
+<link rel="stylesheet" href="layout.css" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<style>#testbar{position:fixed;top:0;left:0;right:0;z-index:9999;background:#111;color:#eee;font:12px/1.6 ui-monospace,Consolas,monospace;padding:8px 12px;max-height:45vh;overflow:auto;white-space:pre-wrap}</style>
+</head>
+<body>
+<header>
+  <div class="sb-tools"><button id="settingsBtn" type="button" class="btn sm ghost">⚙</button></div>
+  <div class="logo"><div>Phigros <span class="grad">谱面评价</span></div></div>
+  <nav id="navLinks"></nav>
+  <div class="spacer"></div>
+  <button id="appBtn" type="button" class="btn sm ghost">浅·红</button>
+  <button id="styleBtn" type="button" class="btn sm">简约</button>
+  <div id="userArea"></div>
+</header>
+<button id="sbToggle" type="button" class="btn sm ghost">«</button>
+<main id="main"></main>
+<div class="modal" id="authModal"></div>
+<div class="toast" id="toast"></div>
+<pre id="testbar">running…</pre>
+
+<script src="config.js"></script>
+<script>
+  /* 覆盖成 Mock Supabase（必须在 js/config.js 模块求值之前设置） */
+  window.PHIGROS_BACKEND = { enabled: true, url: 'http://127.0.0.1:8123', anonKey: 'test_publishable_key' };
+</script>
+<script type="module" src="js/main.js"></script>
+<script type="module">
+import { bootstrapData, avgScore, getCommentsFor } from './js/storage.js';
+import { signUp, currentUser } from './js/auth.js';
+import { router } from './js/ui.js';
+
+const lines = []; let pass = 0, fail = 0;
+const ok = (n, c, x) => { c ? (pass++, lines.push('[P] ' + n + (x ? '  ' + x : ''))) : (fail++, lines.push('[F] ' + n + (x ? '  ' + x : ''))); };
+const draw = () => { document.getElementById('testbar').textContent = lines.join('\n') + '\n== ' + pass + ' passed, ' + fail + ' failed ==\nEVENTCOUNT=' + (pass + fail); };
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+async function until(fn, ms = 6000) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) { try { if (fn()) return true; } catch (e) { /* 继续等 */ } await sleep(100); }
+  return false;
+}
+
+try {
+  window.confirm = () => true;   // 无头浏览器不会弹窗
+
+  // 1) 首页渲染
+  const cardsShown = await until(() => document.querySelectorAll('#songGrid .card').length > 5);
+  ok('首页卡片渲染', cardsShown, 'cards=' + document.querySelectorAll('#songGrid .card').length);
+  ok('未登录时页头有登录按钮', !!document.querySelector('#userArea #loginBtn'));
+  ok('未登录时页头无「我的主页」', !/我的主页/.test(document.getElementById('navLinks').textContent));
+
+  // 2) 搜索 / 筛选交互
+  const si = document.getElementById('searchInput');
+  si.value = 'Igallta';
+  si.dispatchEvent(new Event('input'));
+  await sleep(120);
+  ok('搜索过滤生效', document.querySelectorAll('#songGrid .card').length < 20 && document.querySelectorAll('#songGrid .card').length >= 1,
+    'matches=' + document.querySelectorAll('#songGrid .card').length);
+  si.value = ''; si.dispatchEvent(new Event('input'));
+  await sleep(120);
+  const ss = document.getElementById('sortSelect');
+  ss.value = 'rating'; ss.dispatchEvent(new Event('change'));
+  await sleep(120);
+  ok('排序切换后仍有卡片', document.querySelectorAll('#songGrid .card').length > 100);
+
+  // 3) 注册后页头切换（每次用新邮箱，避免重复运行冲突）
+  await signUp('ui' + Date.now() + '@example.com', 'abc123456', 'UI君');
+  await bootstrapData();
+  router();
+  ok('登录后页头显示昵称', /UI君/.test(document.getElementById('userArea').textContent),
+    document.getElementById('userArea').textContent.trim().slice(0, 40));
+  ok('登录后出现「我的主页」', /我的主页/.test(document.getElementById('navLinks').textContent));
+
+  // 4) 详情页：难度切换 + 打分 + 评论
+  location.hash = '#/song/rrharil';
+  const chartShown = await until(() => !!document.querySelector('#starPicker'));
+  ok('详情页渲染出星条', chartShown);
+
+  const tabs = document.querySelectorAll('.diff-tab');
+  ok('难度按钮存在', tabs.length >= 2, 'tabs=' + tabs.length);
+  if (tabs.length >= 2) {
+    tabs[1].click();
+    await sleep(150);
+    ok('切难度后仍是详情页', !!document.querySelector('.detail-info'));
+  }
+
+  const star8 = document.querySelector('#starPicker .star[data-score="8"]');
+  ok('找到 8 分星星', !!star8);
+  star8.click();
+  const { myRating, getRatingsFor } = await import('./js/storage.js');
+  ok('点击后写入评分', await until(() => myRating('rrharil') && myRating('rrharil').score === 8),
+    'mine=' + JSON.stringify(myRating('rrharil') && myRating('rrharil').score));
+  ok('详情页显示的平均分已更新', await until(() => /^\d+\.\d$/.test(document.querySelector('.big-num').textContent.trim())),
+    'avg显示=' + document.querySelector('.big-num').textContent.trim() + ' / 计算值=' + avgScore('rrharil'));
+  // 再点一次别的分数：应当走更新（PATCH），不产生第二行
+  document.querySelector('#starPicker .star[data-score="6"]').click();
+  await until(() => myRating('rrharil') && myRating('rrharil').score === 6);
+  const mineRows = getRatingsFor('rrharil').filter(r => r.user_id === currentUser().id);
+  ok('重复打分只保留一行（走更新而非新增）', mineRows.length === 1, 'rows=' + mineRows.length + ' score=' + (mineRows[0] && mineRows[0].score));
+
+  const ta = document.getElementById('commentInput');
+  ok('评论输入框存在', !!ta);
+  ta.value = '这是 UI 自测评论';
+  document.getElementById('submitComment').click();
+  ok('评论出现在列表', await until(() => /UI 自测评论/.test(document.getElementById('commentList').textContent)));
+  ok('自己的评论有删除按钮', !!document.querySelector('.comment-del'));
+  ok('评论作者显示昵称', /UI君/.test(document.getElementById('commentList').textContent));
+  ok('存储层拿到 1 条评论', getCommentsFor('rrharil').length === 1);
+
+  document.querySelector('.comment-del').click();
+  ok('删除评论生效', await until(() => getCommentsFor('rrharil').length === 0));
+
+  // 5) 个人主页
+  location.hash = '#/profile';
+  ok('个人主页渲染', await until(() => /我的评分/.test(document.getElementById('main').textContent)));
+  ok('主页显示自己的评分记录', /Rrhar/.test(document.getElementById('main').textContent) || /我的评分/.test(document.getElementById('main').textContent));
+  ok('主页显示管理员前非管理员身份', !/管理员/.test(document.getElementById('main').textContent));
+
+  // 6) 主题与设置
+  const sb = document.getElementById('sbToggle');
+  sb.click();
+  ok('侧栏折叠 class 生效', document.body.classList.contains('sb-collapsed'));
+  document.getElementById('appBtn').click();
+  ok('外观切换为 浅·蓝', document.getElementById('appBtn').textContent.trim() === '浅·蓝' && document.body.classList.contains('accent-blue'),
+    document.getElementById('appBtn').textContent.trim() + ' / ' + document.body.className);
+  const styleBtn = document.getElementById('styleBtn');
+  const beforeStyle = styleBtn.textContent.trim();
+  styleBtn.click();
+  const afterStyle = styleBtn.textContent.trim();
+  ok('风格按钮在两套风格间切换', (beforeStyle === '现代' && afterStyle === '简约') || (beforeStyle === '简约' && afterStyle === '现代'),
+    beforeStyle + ' → ' + afterStyle);
+  ok('样式表 disable 状态同步', document.getElementById('css-modern').disabled === (afterStyle === '简约'));
+  document.getElementById('settingsBtn').click();
+  await sleep(120);
+  ok('设置面板打开', !!document.querySelector('#settingsModal .set-card'));
+  ok('设置里有开关', document.querySelectorAll('#settingsModal .switch input').length >= 3);
+  ok('当前用户已登录', !!currentUser(), JSON.stringify(currentUser()));
+} catch (e) {
+  lines.push('[F] EXCEPTION ' + (e && e.message ? e.message : String(e)));
+  lines.push((e && e.stack ? e.stack.split('\n').slice(0, 5).join('\n') : ''));
+  fail++;
+}
+draw();
+</script>
+</body>
+</html>
