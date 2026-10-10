@@ -1,0 +1,11 @@
+# 公开仓是跨平台分发的：把文本文件的行尾钉死成 LF，
+# 避免 Windows 上的 core.autocrlf 把整仓文件变成 CRLF、产生无意义的整文件 diff。
+* text=auto eol=lf
+
+# 图片是二进制，禁止任何行尾转换
+*.jpg binary
+*.jpeg binary
+*.png binary
+*.gif binary
+*.ico binary
+*.webp binary

@@ -1,6 +1,6 @@
 /* =========================================================
  * _test-rank.js —— A 组判据：榜单计算口径（纯函数 rankRows/mostDiffOf）
- * 运行：node --test dev/test-rank.js
+ * 运行：node --test D:\phi\_test-rank.js
  *
  * 为什么这么写：
  *   本目录没有 package.json（`serve.js` / `_mocksupa.js` 用的是 CommonJS），
